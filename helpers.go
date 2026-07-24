@@ -31,22 +31,31 @@ func sortedProperties(s *Config) []propertyEntry {
 // scalarUnionVariants returns the anyOf or oneOf variants for a scalar union,
 // preferring anyOf. Returns nil if neither is set.
 //
-// A single-branch anyOf/oneOf is the OpenAPI idiom for attaching nullable or a
-// description to a $ref (e.g. `{"anyOf":[{"$ref":...}],"nullable":true}`); it
-// is a passthrough, not a union. When that single branch is itself a scalar
-// union, its variants are surfaced so the union is preserved rather than
-// collapsed to its first branch by FlattenComposite.
+// Nested scalar unions are flattened recursively. NVUE commonly expresses a
+// value such as integer | "none" | "auto" as:
+//
+//	anyOf:
+//	  - $ref: integer | "none"
+//	  - $ref: "auto"
+//
+// Leaving the inner union nested makes isScalarUnion reject the outer union,
+// after which FlattenComposite collapses it to whichever scalar type appears
+// first.
 func scalarUnionVariants(s *Config) []*Config {
 	variants := s.AnyOf
 	if len(variants) == 0 {
 		variants = s.OneOf
 	}
-	if len(variants) == 1 {
-		if inner := scalarUnionVariants(variants[0]); len(inner) > 1 {
-			return inner
+
+	var expanded []*Config
+	for _, variant := range variants {
+		if inner := scalarUnionVariants(variant); len(inner) > 0 {
+			expanded = append(expanded, inner...)
+			continue
 		}
+		expanded = append(expanded, variant)
 	}
-	return variants
+	return expanded
 }
 
 // splitIdentifier splits a string on '-', '_', and '.' delimiters.

@@ -50,3 +50,41 @@ func TestScalarUnion_NestedInSingleBranchWrapper_Preserved(t *testing.T) {
 		t.Error("integer branch dropped its maximum constraint")
 	}
 }
+
+// NVUE models peer-group BGP timers as an outer union whose first branch is
+// itself a union: (integer | "none") | "auto". The integer branch must survive
+// conversion to JSON Schema.
+func TestScalarUnion_NestedMultiBranchTimer_Preserved(t *testing.T) {
+	min3, max65535 := 3.0, 65535.0
+	timer := &Config{
+		Description: "Hold timer",
+		Default:     "auto",
+		AnyOf: []*Config{
+			{
+				AnyOf: []*Config{
+					{Type: "string", Enum: []any{"none", nil}, Nullable: true},
+					{Type: "integer", Minimum: &min3, Maximum: &max65535, Nullable: true},
+				},
+			},
+			{Type: "string", Enum: []any{"auto", nil}, Nullable: true},
+		},
+	}
+
+	out := timer.ToJSONSchema()
+	variants, ok := out["anyOf"].([]map[string]any)
+	if !ok || len(variants) != 3 {
+		t.Fatalf("expected 3 flattened scalar variants, got %#v", out)
+	}
+
+	blob, _ := json.Marshal(out)
+	s := string(blob)
+	if !strings.Contains(s, `"type":["integer","null"]`) {
+		t.Errorf("integer timer branch lost: %s", s)
+	}
+	if !strings.Contains(s, `"minimum":3`) || !strings.Contains(s, `"maximum":65535`) {
+		t.Errorf("integer timer bounds lost: %s", s)
+	}
+	if !strings.Contains(s, `"none"`) || !strings.Contains(s, `"auto"`) {
+		t.Errorf("timer string alternatives lost: %s", s)
+	}
+}
