@@ -31,7 +31,7 @@ func WritePydantic(w io.Writer, schema *Config, info map[string]any) error {
 	fmt.Fprintln(w, "from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network")
 	fmt.Fprintln(w, "from typing import Annotated, Any, Dict, List, Literal, Optional, Union")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "from pydantic import AnyUrl, BaseModel, BeforeValidator, Field, FilePath, SecretStr")
+	fmt.Fprintln(w, "from pydantic import AfterValidator, AnyUrl, BaseModel, BeforeValidator, Field, FilePath, SecretStr")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "# Validated network configuration types")
 	for _, td := range typedefs {
@@ -49,6 +49,13 @@ func WritePydantic(w io.Writer, schema *Config, info map[string]any) error {
             raise ValueError("string length outside schema bounds")
         if pattern is not None and re.search(pattern, value) is None:
             raise ValueError("string does not match schema pattern")
+    return value
+
+
+def _validate_number(value: Any, *, ge: Optional[float] = None, le: Optional[float] = None) -> Any:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if (ge is not None and value < ge) or (le is not None and value > le):
+            raise ValueError("number outside schema bounds")
     return value
 `)
 	g.emitModel("NvueConfig", schema)
@@ -240,7 +247,13 @@ func constrainedPyType(typ string, s *Config) string {
 		}
 	}
 	if len(bounds) > 0 {
-		metadata = append(metadata, "Field("+strings.Join(bounds, ", ")+")")
+		if typ == "int" || typ == "float" {
+			metadata = append(metadata, "Field("+strings.Join(bounds, ", ")+")")
+		} else {
+			// JSON Schema numeric keywords do not restrict string or boolean
+			// alternatives in a union. Check the resolved value's type first.
+			metadata = append(metadata, "AfterValidator(partial(_validate_number, "+strings.Join(bounds, ", ")+"))")
+		}
 	}
 	if s.MinLength != nil {
 		stringsBounds = append(stringsBounds, fmt.Sprintf("min_length=%d", *s.MinLength))
