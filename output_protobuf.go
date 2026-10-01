@@ -68,6 +68,9 @@ func (g *protoGen) emitMessage(name string, s *Config, depth int) {
 		var child *Config
 		base := toPascal(protoFieldName(p.name))
 		switch {
+		case flat.Type == "array" && flat.Items != nil && hasProps(FlattenComposite(flat.Items)):
+			child = flat.Items
+			base += "Item"
 		case hasProps(flat):
 			child = p.schema
 		case flat.AdditionalProperties != nil && hasProps(FlattenComposite(flat.AdditionalProperties)):
