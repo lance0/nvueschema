@@ -68,22 +68,9 @@ func (g *pyGen) emitModel(name string, s *Config) {
 	merged := FlattenComposite(s)
 	props := sortedProperties(merged)
 
-	// Emit child models first (depth-first).
+	// Discover dependencies through arrays and maps before emitting fields.
 	for _, p := range props {
-		childName := name + toPascal(p.name)
-		if isScalarUnion(p.schema) {
-			continue
-		}
-		flat := FlattenComposite(p.schema)
-		if hasProps(flat) {
-			g.emitModel(childName, p.schema)
-		}
-		if flat.AdditionalProperties != nil {
-			apFlat := FlattenComposite(flat.AdditionalProperties)
-			if hasProps(apFlat) {
-				g.emitModel(childName+"Entry", flat.AdditionalProperties)
-			}
-		}
+		g.emitTypeModels(name+toPascal(p.name), p.schema)
 	}
 
 	requiredSet := make(map[string]bool)
@@ -138,6 +125,20 @@ func (g *pyGen) emitModel(name string, s *Config) {
 		}
 	}
 	fmt.Fprintln(g.w)
+}
+
+func (g *pyGen) emitTypeModels(name string, s *Config) {
+	if s == nil || isScalarUnion(s) {
+		return
+	}
+	flat := FlattenComposite(s)
+	if flat.Type == "array" {
+		g.emitTypeModels(name+"Item", flat.Items)
+	} else if hasProps(flat) {
+		g.emitModel(name, s)
+	} else if flat.AdditionalProperties != nil {
+		g.emitTypeModels(name+"Entry", flat.AdditionalProperties)
+	}
 }
 
 func (g *pyGen) pyType(contextName string, s *Config) string {

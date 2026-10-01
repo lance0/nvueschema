@@ -13,9 +13,9 @@ const goLineWidth = 88
 
 // WriteGoStructs outputs the config schema as Go struct definitions with json tags.
 func WriteGoStructs(w io.Writer, schema *Config, info map[string]any) error {
-	var buf bytes.Buffer
+	var buf, declarations bytes.Buffer
 	g := &goGen{
-		w:      &buf,
+		w:      &declarations,
 		models: make(map[string]bool),
 	}
 
@@ -26,20 +26,22 @@ func WriteGoStructs(w io.Writer, schema *Config, info map[string]any) error {
 	fmt.Fprintln(&buf)
 	fmt.Fprintln(&buf, "package nvue")
 	fmt.Fprintln(&buf)
-	fmt.Fprintln(&buf, "import (")
-	fmt.Fprintln(&buf, "\t\"net/netip\"")
-	fmt.Fprintln(&buf, ")")
-	fmt.Fprintln(&buf)
 
 	// Emit type aliases for validated string types.
-	fmt.Fprintln(&buf, "// Validated string types for network configuration values.")
-	fmt.Fprintln(&buf, "// Use the Validate() methods or a JSON Schema validator to enforce patterns.")
+	fmt.Fprintln(&declarations, "// Validated string types for network configuration values.")
+	fmt.Fprintln(&declarations, "// Use the Validate() methods or a JSON Schema validator to enforce patterns.")
 	for _, td := range typedefs {
-		fmt.Fprintf(&buf, "type %s = string\n", td.name)
+		fmt.Fprintf(&declarations, "type %s = string\n", td.name)
 	}
-	fmt.Fprintln(&buf)
+	fmt.Fprintln(&declarations)
 
 	g.emitStruct("NvueConfig", schema)
+
+	if g.usesNetIP {
+		fmt.Fprintln(&buf, "import \"net/netip\"")
+		fmt.Fprintln(&buf)
+	}
+	buf.Write(declarations.Bytes())
 
 	// Run go fmt on the output.
 	formatted, err := format.Source(buf.Bytes())
@@ -56,8 +58,9 @@ func WriteGoStructs(w io.Writer, schema *Config, info map[string]any) error {
 }
 
 type goGen struct {
-	w      io.Writer
-	models map[string]bool
+	w         io.Writer
+	models    map[string]bool
+	usesNetIP bool
 }
 
 func (g *goGen) emitStruct(name string, s *Config) {
@@ -69,22 +72,9 @@ func (g *goGen) emitStruct(name string, s *Config) {
 	merged := FlattenComposite(s)
 	props := sortedProperties(merged)
 
-	// Emit child structs first (depth-first).
+	// Discover dependencies through arrays and maps before emitting fields.
 	for _, p := range props {
-		childName := name + goPublic(p.name)
-		if isScalarUnion(p.schema) {
-			continue
-		}
-		flat := FlattenComposite(p.schema)
-		if hasProps(flat) {
-			g.emitStruct(childName, p.schema)
-		}
-		if flat.AdditionalProperties != nil {
-			apFlat := FlattenComposite(flat.AdditionalProperties)
-			if hasProps(apFlat) {
-				g.emitStruct(childName+"Entry", flat.AdditionalProperties)
-			}
-		}
+		g.emitTypeStructs(name+goPublic(p.name), p.schema)
 	}
 
 	// Emit this struct.
@@ -117,6 +107,20 @@ func (g *goGen) emitStruct(name string, s *Config) {
 	fmt.Fprintln(g.w)
 }
 
+func (g *goGen) emitTypeStructs(name string, s *Config) {
+	if s == nil || isScalarUnion(s) {
+		return
+	}
+	flat := FlattenComposite(s)
+	if flat.Type == "array" {
+		g.emitTypeStructs(name+"Item", flat.Items)
+	} else if hasProps(flat) {
+		g.emitStruct(name, s)
+	} else if flat.AdditionalProperties != nil {
+		g.emitTypeStructs(name+"Entry", flat.AdditionalProperties)
+	}
+}
+
 func (g *goGen) goType(contextName string, s *Config) string {
 	if s == nil {
 		return "any"
@@ -134,6 +138,9 @@ func (g *goGen) goType(contextName string, s *Config) string {
 
 	// Check format first.
 	if ft := formatToGoType(flat.Format); ft != "" {
+		if strings.HasPrefix(ft, "netip.") {
+			g.usesNetIP = true
+		}
 		return "*" + ft
 	}
 
@@ -196,32 +203,32 @@ func formatToGoType(format string) string {
 }
 
 var goFormatTypes = map[formatKey]string{
-	fmtIPv4Addr:          "netip.Addr",
-	fmtIPv6Addr:          "netip.Addr",
-	fmtIPAddr:            "netip.Addr",
-	fmtIPv4Prefix:        "netip.Prefix",
-	fmtIPv6Prefix:        "netip.Prefix",
-	fmtMAC:               "MacAddress",
-	fmtInterfaceName:     "InterfaceName",
-	fmtVrfName:           "VrfName",
-	fmtVlanRange:         "VlanRange",
-	fmtPortRange:         "PortRange",
+	fmtIPv4Addr:           "netip.Addr",
+	fmtIPv6Addr:           "netip.Addr",
+	fmtIPAddr:             "netip.Addr",
+	fmtIPv4Prefix:         "netip.Prefix",
+	fmtIPv6Prefix:         "netip.Prefix",
+	fmtMAC:                "MacAddress",
+	fmtInterfaceName:      "InterfaceName",
+	fmtVrfName:            "VrfName",
+	fmtVlanRange:          "VlanRange",
+	fmtPortRange:          "PortRange",
 	fmtRouteDistinguisher: "RouteDistinguisher",
-	fmtRouteTarget:       "RouteTarget",
-	fmtExtCommunity:      "ExtCommunity",
-	fmtBgpCommunity:      "BgpCommunity",
-	fmtEvpnRoute:         "EvpnRoute",
-	fmtBgpRegex:          "BgpRegex",
-	fmtAsnRange:          "AsnRange",
-	fmtEsIdentifier:      "EsIdentifier",
-	fmtSegmentIdentifier: "SegmentIdentifier",
-	fmtHostname:          "Hostname",
-	fmtUserName:          "UserName",
-	fmtSnmpOid:           "SnmpOid",
-	fmtSecretString:      "string",
-	fmtInteger:           "int64",
-	fmtSequenceID:        "int64",
-	fmtFloat:             "float64",
+	fmtRouteTarget:        "RouteTarget",
+	fmtExtCommunity:       "ExtCommunity",
+	fmtBgpCommunity:       "BgpCommunity",
+	fmtEvpnRoute:          "EvpnRoute",
+	fmtBgpRegex:           "BgpRegex",
+	fmtAsnRange:           "AsnRange",
+	fmtEsIdentifier:       "EsIdentifier",
+	fmtSegmentIdentifier:  "SegmentIdentifier",
+	fmtHostname:           "Hostname",
+	fmtUserName:           "UserName",
+	fmtSnmpOid:            "SnmpOid",
+	fmtSecretString:       "string",
+	fmtInteger:            "int64",
+	fmtSequenceID:         "int64",
+	fmtFloat:              "float64",
 }
 
 // goPublic converts a kebab-case or snake_case name to a Go public identifier.
