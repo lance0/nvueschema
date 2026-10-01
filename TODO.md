@@ -33,6 +33,8 @@ of the same underlying defects) and one unused-import warning:
 - [x] Preserve numeric enum values as restrictions on numeric YANG types, including
   nullable enums and union members. Emit each union member's bounds instead of
   dropping its restrictions; validate allowed and rejected values with pyang.
+  Null-only alternatives map to leaf absence instead of empty enumeration
+  types; untyped numeric enum constraints retain their numeric values.
 - [x] Supply decimal64 fraction-digits and compatible range restrictions, with
   parser-backed tests for fractional bounds, defaults, and union members.
   Use six fractional digits by default, adjusting for declared values, and

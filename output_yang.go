@@ -145,6 +145,10 @@ func emitYANGContainer(w io.Writer, name string, orig *Config, flat *Config, dep
 }
 
 func emitYANGNode(w io.Writer, name string, s *Config, depth int) error {
+	// YANG represents an unset nullable value by absence of the leaf.
+	if yangNullOnly(s) {
+		return nil
+	}
 	// Scalar union (anyOf/oneOf of primitives) -> YANG union leaf.
 	if isScalarUnion(s) {
 		return emitYANGUnionLeaf(w, name, s, depth)
@@ -237,7 +241,15 @@ func emitYANGLeafList(w io.Writer, name string, s *Config, depth int) error {
 
 func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) error {
 	indent := strings.Repeat("  ", depth)
-	variants := scalarUnionVariants(s)
+	var variants []*Config
+	for _, variant := range scalarUnionVariants(s) {
+		if !yangNullOnly(variant) {
+			variants = append(variants, variant)
+		}
+	}
+	if len(variants) == 0 {
+		return nil
+	}
 
 	fmt.Fprintf(w, "%sleaf %s {\n", indent, yangSafe(name))
 	if len(variants) == 1 {
@@ -339,6 +351,31 @@ func toYANGType(s *Config) string {
 		}
 		return t
 	}
+	if s.Type == "" && len(s.Enum) > 0 {
+		numeric, fractional := false, false
+		for _, value := range s.Enum {
+			if value == nil {
+				continue
+			}
+			switch value.(type) {
+			case float64, int, int64, uint64:
+				number, err := strconv.ParseFloat(fmt.Sprint(value), 64)
+				if err != nil {
+					return "enumeration"
+				}
+				numeric = true
+				fractional = fractional || number != math.Trunc(number)
+			default:
+				return "enumeration"
+			}
+		}
+		if numeric {
+			if fractional {
+				return "decimal64"
+			}
+			return yangIntegerType(s)
+		}
+	}
 	if len(s.Enum) > 0 && (s.Type == "string" || s.Type == "") {
 		return "enumeration"
 	}
@@ -356,6 +393,10 @@ func toYANGType(s *Config) string {
 	default:
 		return "string"
 	}
+}
+
+func yangNullOnly(s *Config) bool {
+	return s.Type == "null" || len(s.Enum) > 0 && !slices.ContainsFunc(s.Enum, func(value any) bool { return value != nil })
 }
 
 // formatToYANGType maps OpenAPI format strings to YANG types via the registry.

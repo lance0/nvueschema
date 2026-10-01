@@ -173,6 +173,30 @@ func TestYANGIntegerRanges(t *testing.T) {
 
 type yangValues struct{ Good, Bad []string }
 
+func TestYANGNullAlternatives(t *testing.T) {
+	schema := &Config{Properties: map[string]*Config{
+		"mac":        {AnyOf: []*Config{{Type: "string", Format: "mac"}, {Type: "string", Nullable: true, Enum: []any{nil}}}},
+		"unset":      {Enum: []any{nil}},
+		"null-union": {AnyOf: []*Config{{Enum: []any{nil}}, {Type: "null"}}},
+		"plane":      {Enum: []any{float64(0), nil}},
+	}}
+	var buf bytes.Buffer
+	if err := WriteYANG(&buf, schema, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{"leaf unset", "leaf null-union", "type enumeration"} {
+		if strings.Contains(buf.String(), absent) {
+			t.Errorf("unexpected %s", absent)
+		}
+	}
+	t.Run("validate", func(t *testing.T) {
+		checkYANGValues(t, buf.Bytes(), map[string]yangValues{
+			"mac":   {Good: []string{"00:11:22:33:44:55"}, Bad: []string{"", "invalid"}},
+			"plane": {Good: []string{"0"}, Bad: []string{"1", "auto"}},
+		})
+	})
+}
+
 func TestYANGDecimalTypes(t *testing.T) {
 	lo, hi, tiny, huge := 0.001, 3500.0, 0.00000001, 1e16
 	schema := &Config{Properties: map[string]*Config{
