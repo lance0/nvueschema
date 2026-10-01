@@ -3,6 +3,7 @@ package nvueschema
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -204,7 +205,7 @@ func emitYANGLeaf(w io.Writer, name string, s *Config, depth int) {
 		fmt.Fprintf(w, "%s  description\n%s    %q;\n", indent, indent, s.Description)
 	}
 	if s.Default != nil {
-		fmt.Fprintf(w, "%s  default %q;\n", indent, fmtDefault(s.Default))
+		fmt.Fprintf(w, "%s  default %s;\n", indent, yangDefault(s.Default))
 	}
 	fmt.Fprintf(w, "%s}\n", indent)
 }
@@ -257,7 +258,7 @@ func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) {
 		fmt.Fprintf(w, "%s  description\n%s    %q;\n", indent, indent, s.Description)
 	}
 	if s.Default != nil {
-		fmt.Fprintf(w, "%s  default %q;\n", indent, fmtDefault(s.Default))
+		fmt.Fprintf(w, "%s  default %s;\n", indent, yangDefault(s.Default))
 	}
 	fmt.Fprintf(w, "%s}\n", indent)
 }
@@ -377,6 +378,13 @@ var yangFormatTypes = map[formatKey]string{
 	fmtSequenceID:        "int64",
 	fmtFloat:             "decimal64",
 	fmtDateTime:          "yang:date-and-time",
+}
+
+func yangDefault(value any) string {
+	if number, ok := value.(float64); ok {
+		return yangString(strconv.FormatFloat(number, 'f', -1, 64))
+	}
+	return yangString(fmt.Sprint(value))
 }
 
 // yangString quotes a value using YANG's four supported escape sequences.

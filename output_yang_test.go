@@ -92,6 +92,57 @@ func parseYANG(t *testing.T, source []byte) []byte {
 	return out
 }
 
+func TestYANGDefaults(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema *Config
+		want   string
+	}{
+		{"enum", &Config{Type: "string", Enum: []any{"packet", "byte"}, Default: "packet"}, "packet"},
+		{"mac", &Config{Type: "string", Format: "mac", Default: "ff:ff:ff:ff:ff:ff"}, "ff:ff:ff:ff:ff:ff"},
+		{"quoted", &Config{Type: "string", Default: "a'\"b"}, "a'\"b"},
+		{"empty", &Config{Type: "string", Default: ""}, ""},
+		{"integer", &Config{Type: "integer", Default: float64(4294967295)}, "4294967295"},
+		{"boolean", &Config{Type: "boolean", Default: true}, "true"},
+		{"union", &Config{AnyOf: []*Config{{Type: "integer"}, {Type: "string", Enum: []any{"auto"}}}, Default: "auto"}, "auto"},
+	}
+	schema := &Config{Properties: make(map[string]*Config)}
+	for _, tt := range tests {
+		schema.Properties[tt.name] = tt.schema
+	}
+	var buf bytes.Buffer
+	if err := WriteYANG(&buf, schema, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range tests {
+		if want := "default " + yangString(tt.want) + ";"; !strings.Contains(buf.String(), want) {
+			t.Errorf("%s: missing %s", tt.name, want)
+		}
+	}
+	t.Run("parse", func(t *testing.T) {
+		var module struct {
+			Leaves []struct {
+				Name    string `xml:"name,attr"`
+				Default struct {
+					Value string `xml:"value,attr"`
+				} `xml:"default"`
+			} `xml:"container>leaf"`
+		}
+		if err := xml.Unmarshal(parseYANG(t, buf.Bytes()), &module); err != nil {
+			t.Fatal(err)
+		}
+		defaults := make(map[string]string)
+		for _, leaf := range module.Leaves {
+			defaults[leaf.Name] = leaf.Default.Value
+		}
+		for _, tt := range tests {
+			if got, ok := defaults[tt.name]; !ok || got != tt.want {
+				t.Errorf("%s: parsed default = %q, want %q", tt.name, got, tt.want)
+			}
+		}
+	})
+}
+
 // Set NVUESCHEMA_PYTHON to a Python environment with pyang and pydantic to
 // exercise the generated artifacts in addition to the Go-only tests.
 func testPython(t *testing.T, module string) string {
