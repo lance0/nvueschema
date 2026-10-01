@@ -15,9 +15,30 @@ Each item gets a separate Jujutsu change, with regression tests committed alongs
 
 ## Follow-up discovered during full-schema verification
 
-- [ ] Escape source patterns when emitting YANG string literals. The original
-  typedef-semicolon issue above is fixed and covered by a `pyang` test, but the
-  complete 5.16 schema contains a pattern with a single quote. Emitting that
-  pattern inside single quotes in `emitYANGTypeBlock` still produces an
-  unterminated statement. Add a quoted-pattern fixture and rerun `pyang` on the
-  full schema after addressing this separate escaping issue.
+- [x] Escape source patterns when emitting YANG string literals. Regression
+  tests parse generated YANG with `pyang` and compare the recovered pattern
+  values, covering both quote types, backslashes, newlines, tabs, and Unicode.
+  The complete 5.16 schema now passes statement parsing, exposing the separate
+  validation failures below.
+
+Full-schema validation with pyang 2.7.1 still reports 566 errors (many instances
+of the same underlying defects) and one unused-import warning:
+
+- [ ] Fix YANG default serialization. String defaults are quoted twice, causing
+  enum and pattern validation failures. Test parsed defaults and their validity.
+- [ ] Emit valid YANG numeric ranges. Generated ranges contain Go constants such
+  as `INT32_MAX`, exceed int64 bounds, or have reversed endpoints. Cover boundary
+  values and verify how conflicting source constraints should be represented.
+- [ ] Preserve non-string enum values when generating YANG enumerations; numeric
+  enums currently produce empty enumeration types. Validate representative
+  source fixtures with `pyang`.
+- [ ] Supply decimal64 fraction-digits and compatible range restrictions, with
+  parser-backed tests for fractional bounds and defaults.
+- [ ] Handle source regexes that are incompatible with YANG's XML Schema regex
+  dialect. Correct quoting preserves the source pattern but does not translate
+  lookahead or unsupported escapes. Define supported conversions and explicit
+  errors for unsupported patterns, with semantic regression tests.
+- [ ] Require generator integration dependencies in CI and add representative
+  NVUE source fixtures that go through parsing, generation, and validation.
+  Python integrations currently skip when dependencies are absent, Protobuf
+  compilation skips without protoc, and full-schema checks remain manual.
