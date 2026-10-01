@@ -43,7 +43,9 @@ func WriteYANG(w io.Writer, schema *Config, info map[string]any) error {
 	emitYANGTypedefs(w)
 
 	merged := FlattenComposite(schema)
-	emitYANGContainer(w, "nvue-config", schema, merged, 1)
+	if err := emitYANGContainer(w, "nvue-config", schema, merged, 1); err != nil {
+		return err
+	}
 
 	fmt.Fprintln(w, "}")
 	return checked.err
@@ -114,13 +116,13 @@ func yangTypedefName(k formatKey) string {
 	}
 }
 
-func emitYANGContainer(w io.Writer, name string, orig *Config, flat *Config, depth int) {
+func emitYANGContainer(w io.Writer, name string, orig *Config, flat *Config, depth int) error {
 	indent := strings.Repeat("  ", depth)
 	props := sortedProperties(flat)
 
 	// Skip empty containers.
 	if len(props) == 0 {
-		return
+		return nil
 	}
 
 	ref := sourceRefFor(orig)
@@ -133,17 +135,19 @@ func emitYANGContainer(w io.Writer, name string, orig *Config, flat *Config, dep
 	}
 
 	for _, p := range props {
-		emitYANGNode(w, p.name, p.schema, depth+1)
+		if err := emitYANGNode(w, p.name, p.schema, depth+1); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
 	}
 
 	fmt.Fprintf(w, "%s}\n", indent)
+	return nil
 }
 
-func emitYANGNode(w io.Writer, name string, s *Config, depth int) {
+func emitYANGNode(w io.Writer, name string, s *Config, depth int) error {
 	// Scalar union (anyOf/oneOf of primitives) -> YANG union leaf.
 	if isScalarUnion(s) {
-		emitYANGUnionLeaf(w, name, s, depth)
-		return
+		return emitYANGUnionLeaf(w, name, s, depth)
 	}
 
 	flat := FlattenComposite(s)
@@ -152,28 +156,25 @@ func emitYANGNode(w io.Writer, name string, s *Config, depth int) {
 	if flat.AdditionalProperties != nil {
 		apFlat := FlattenComposite(flat.AdditionalProperties)
 		if hasProps(apFlat) {
-			emitYANGList(w, name, flat.AdditionalProperties, apFlat, depth)
-			return
+			return emitYANGList(w, name, flat.AdditionalProperties, apFlat, depth)
 		}
 	}
 
 	// Has sub-properties -> container.
 	if hasProps(flat) {
-		emitYANGContainer(w, name, s, flat, depth)
-		return
+		return emitYANGContainer(w, name, s, flat, depth)
 	}
 
 	// Array -> leaf-list.
 	if flat.Type == "array" && flat.Items != nil {
-		emitYANGLeafList(w, name, flat, depth)
-		return
+		return emitYANGLeafList(w, name, flat, depth)
 	}
 
 	// Scalar -> leaf.
-	emitYANGLeaf(w, name, flat, depth)
+	return emitYANGLeaf(w, name, flat, depth)
 }
 
-func emitYANGList(w io.Writer, name string, orig *Config, flat *Config, depth int) {
+func emitYANGList(w io.Writer, name string, orig *Config, flat *Config, depth int) error {
 	indent := strings.Repeat("  ", depth)
 	props := sortedProperties(flat)
 
@@ -191,18 +192,23 @@ func emitYANGList(w io.Writer, name string, orig *Config, flat *Config, depth in
 	fmt.Fprintf(w, "%s  }\n", indent)
 
 	for _, p := range props {
-		emitYANGNode(w, p.name, p.schema, depth+1)
+		if err := emitYANGNode(w, p.name, p.schema, depth+1); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
 	}
 
 	fmt.Fprintf(w, "%s}\n", indent)
+	return nil
 }
 
-func emitYANGLeaf(w io.Writer, name string, s *Config, depth int) {
+func emitYANGLeaf(w io.Writer, name string, s *Config, depth int) error {
 	indent := strings.Repeat("  ", depth)
 	yangType := toYANGType(s)
 
 	fmt.Fprintf(w, "%sleaf %s {\n", indent, yangSafe(name))
-	emitYANGTypeBlock(w, yangType, s, indent)
+	if err := emitYANGTypeBlock(w, yangType, s, indent); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
 	if s.Description != "" {
 		fmt.Fprintf(w, "%s  description\n%s    %q;\n", indent, indent, s.Description)
 	}
@@ -210,22 +216,26 @@ func emitYANGLeaf(w io.Writer, name string, s *Config, depth int) {
 		fmt.Fprintf(w, "%s  default %s;\n", indent, yangDefault(s.Default))
 	}
 	fmt.Fprintf(w, "%s}\n", indent)
+	return nil
 }
 
-func emitYANGLeafList(w io.Writer, name string, s *Config, depth int) {
+func emitYANGLeafList(w io.Writer, name string, s *Config, depth int) error {
 	indent := strings.Repeat("  ", depth)
 	itemFlat := FlattenComposite(s.Items)
 	yangType := toYANGType(itemFlat)
 
 	fmt.Fprintf(w, "%sleaf-list %s {\n", indent, yangSafe(name))
-	emitYANGTypeBlock(w, yangType, itemFlat, indent)
+	if err := emitYANGTypeBlock(w, yangType, itemFlat, indent); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
 	if s.Description != "" {
 		fmt.Fprintf(w, "%s  description\n%s    %q;\n", indent, indent, s.Description)
 	}
 	fmt.Fprintf(w, "%s}\n", indent)
+	return nil
 }
 
-func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) {
+func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) error {
 	indent := strings.Repeat("  ", depth)
 	variants := scalarUnionVariants(s)
 
@@ -233,11 +243,15 @@ func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) {
 	if len(variants) == 1 {
 		// Single variant — no union wrapper needed.
 		v := variants[0]
-		emitYANGTypeBlock(w, toYANGType(v), v, indent)
+		if err := emitYANGTypeBlock(w, toYANGType(v), v, indent); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
 	} else {
 		fmt.Fprintf(w, "%s  type union {\n", indent)
 		for _, v := range variants {
-			emitYANGTypeBlock(w, toYANGType(v), v, indent+"  ")
+			if err := emitYANGTypeBlock(w, toYANGType(v), v, indent+"  "); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
 		}
 		fmt.Fprintf(w, "%s  }\n", indent)
 	}
@@ -248,12 +262,22 @@ func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) {
 		fmt.Fprintf(w, "%s  default %s;\n", indent, yangDefault(s.Default))
 	}
 	fmt.Fprintf(w, "%s}\n", indent)
+	return nil
 }
 
 // emitYANGTypeBlock writes the type statement, including pattern/range restrictions and enums.
-func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
+func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) error {
 	hasRestrictions := s.Pattern != "" || s.Minimum != nil || s.Maximum != nil ||
-		s.MinLength != nil || s.MaxLength != nil || len(s.Enum) > 0
+		s.MinLength != nil || s.MaxLength != nil || len(s.Enum) > 0 || yangType == "decimal64"
+
+	digits := 0
+	if yangType == "decimal64" {
+		var err error
+		digits, err = yangDecimalPrecision(s)
+		if err != nil {
+			return err
+		}
+	}
 
 	if yangType == "enumeration" && len(s.Enum) > 0 {
 		fmt.Fprintf(w, "%s  type enumeration {\n", indent)
@@ -263,15 +287,18 @@ func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
 			}
 		}
 		fmt.Fprintf(w, "%s  }\n", indent)
-		return
+		return nil
 	}
 
 	if !hasRestrictions {
 		fmt.Fprintf(w, "%s  type %s;\n", indent, yangType)
-		return
+		return nil
 	}
 
 	fmt.Fprintf(w, "%s  type %s {\n", indent, yangType)
+	if digits > 0 {
+		fmt.Fprintf(w, "%s    fraction-digits %d;\n", indent, digits)
+	}
 	if s.Pattern != "" {
 		fmt.Fprintf(w, "%s    pattern %s;\n", indent, yangString(s.Pattern))
 	}
@@ -301,6 +328,7 @@ func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
 		fmt.Fprintf(w, "%s    range \"%s..%s\";\n", indent, lo, hi)
 	}
 	fmt.Fprintf(w, "%s  }\n", indent)
+	return nil
 }
 
 func toYANGType(s *Config) string {

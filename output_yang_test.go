@@ -173,6 +173,47 @@ func TestYANGIntegerRanges(t *testing.T) {
 
 type yangValues struct{ Good, Bad []string }
 
+func TestYANGDecimalTypes(t *testing.T) {
+	lo, hi, tiny, huge := 0.001, 3500.0, 0.00000001, 1e16
+	schema := &Config{Properties: map[string]*Config{
+		"size":      {Type: "number", Format: "float", Minimum: &lo, Maximum: &hi, Default: 10.0},
+		"precise":   {Type: "number", Minimum: &tiny, Maximum: &hi},
+		"large":     {Type: "number", Maximum: &huge},
+		"unbounded": {Type: "number"},
+		"union":     {AnyOf: []*Config{{Type: "number", Minimum: &lo, Maximum: &hi}, {Type: "string", Enum: []any{"auto"}}}},
+	}}
+	var buf bytes.Buffer
+	if err := WriteYANG(&buf, schema, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"fraction-digits 6;", "fraction-digits 8;", "fraction-digits 2;"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	t.Run("validate", func(t *testing.T) {
+		checkYANGValues(t, buf.Bytes(), map[string]yangValues{
+			"size":      {Good: []string{"0.001", "23.05", "3500"}, Bad: []string{"0.0009", "3500.001"}},
+			"precise":   {Good: []string{"0.00000001", "3500"}, Bad: []string{"0.000000001", "3500.1"}},
+			"large":     {Good: []string{"10000000000000000"}, Bad: []string{"10000000000000001"}},
+			"unbounded": {Good: []string{"-0.000001", "42.5"}, Bad: []string{"1.0000001"}},
+			"union":     {Good: []string{"0.001", "3500", "auto"}, Bad: []string{"0", "3500.001"}},
+		})
+	})
+	t.Run("unrepresentable", func(t *testing.T) {
+		for _, invalid := range []*Config{
+			{Type: "number", Minimum: &tiny, Maximum: &huge},
+			{Type: "number", Minimum: new(math.Inf(1))},
+			{Type: "number", Minimum: new(1e-19)},
+		} {
+			err := WriteYANG(&bytes.Buffer{}, &Config{Properties: map[string]*Config{"nested": {Properties: map[string]*Config{"value": invalid}}}}, nil)
+			if err == nil || !strings.Contains(err.Error(), "nested: value: decimal64") {
+				t.Errorf("expected contextual precision error, got %v", err)
+			}
+		}
+	})
+}
+
 func TestYANGNumericEnumsAndUnions(t *testing.T) {
 	lo, hi := 2.0, 3.0
 	schema := &Config{Properties: map[string]*Config{

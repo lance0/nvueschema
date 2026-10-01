@@ -33,8 +33,10 @@ of the same underlying defects) and one unused-import warning:
 - [x] Preserve numeric enum values as restrictions on numeric YANG types, including
   nullable enums and union members. Emit each union member's bounds instead of
   dropping its restrictions; validate allowed and rejected values with pyang.
-- [ ] Supply decimal64 fraction-digits and compatible range restrictions, with
-  parser-backed tests for fractional bounds and defaults.
+- [x] Supply decimal64 fraction-digits and compatible range restrictions, with
+  parser-backed tests for fractional bounds, defaults, and union members.
+  Use six fractional digits by default, adjusting for declared values, and
+  return a field-specific error when precision and magnitude cannot both fit.
 - [ ] Handle source regexes that are incompatible with YANG's XML Schema regex
   dialect. Correct quoting preserves the source pattern but does not translate
   lookahead or unsupported escapes. Define supported conversions and explicit
