@@ -26,9 +26,10 @@ of the same underlying defects) and one unused-import warning:
 
 - [x] Fix YANG default serialization. Preserve string and numeric values without
   display quoting or named constants; validate parsed defaults with pyang.
-- [ ] Emit valid YANG numeric ranges. Generated ranges contain Go constants such
-  as `INT32_MAX`, exceed int64 bounds, or have reversed endpoints. Cover boundary
-  values and verify how conflicting source constraints should be represented.
+- [x] Emit valid YANG numeric ranges with decimal endpoints and unsigned types
+  for nonnegative integers. Validate boundary values through pyang, including
+  the full signed and unsigned 64-bit ranges. The reported reversed ranges were
+  caused by named constants being misread as numbers, not reversed source bounds.
 - [ ] Preserve non-string enum values when generating YANG enumerations; numeric
   enums currently produce empty enumeration types. Validate representative
   source fixtures with `pyang`.
