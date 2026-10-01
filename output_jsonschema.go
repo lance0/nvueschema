@@ -111,7 +111,7 @@ func (s *Config) ToJSONSchema() map[string]any {
 		out["maxLength"] = *flat.MaxLength
 	}
 	if flat.Pattern != "" {
-		jsonSchemaPattern(out, flat.Pattern)
+		out["pattern"] = flat.Pattern
 	}
 	if flat.Format != "" {
 		out["format"] = flat.Format
@@ -190,7 +190,7 @@ func scalarUnionToJSONSchema(s *Config) map[string]any {
 			branch["maxLength"] = *v.MaxLength
 		}
 		if v.Pattern != "" {
-			jsonSchemaPattern(branch, v.Pattern)
+			branch["pattern"] = v.Pattern
 		}
 		schemas = append(schemas, branch)
 	}
@@ -212,19 +212,6 @@ func scalarUnionToJSONSchema(s *Config) map[string]any {
 	}
 
 	return out
-}
-
-// jsonSchemaPattern expresses NVUE's reserved BFD profile name without
-// lookahead, which Go's regexp engine cannot compile. Keep the dot pattern
-// as well: excluding "none" alone would incorrectly allow embedded newlines.
-// Other patterns are preserved verbatim rather than weakening validation.
-func jsonSchemaPattern(out map[string]any, pattern string) {
-	if pattern == `^(?!none$).*$` {
-		out["pattern"] = `^.*$`
-		out["not"] = map[string]any{"enum": []string{"none"}}
-		return
-	}
-	out["pattern"] = pattern
 }
 
 // formatToJSONSchemaDef returns the $defs key for a format, or "" if not mapped.

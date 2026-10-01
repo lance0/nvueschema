@@ -1,8 +1,8 @@
 package main
 
 import (
-	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -29,14 +29,25 @@ func TestValidateNVUEPattern(t *testing.T) {
 			if err := os.WriteFile(config, []byte(tc.config), 0600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := newValidateCmd()
-			cmd.SetArgs([]string{spec, config})
-			cmd.SetOut(io.Discard)
-			cmd.SetErr(io.Discard)
-			err := cmd.Execute()
+			cmd := exec.Command(os.Args[0], "-test.run=^TestValidateCommandHelper$", "--", spec, config)
+			cmd.Env = append(os.Environ(), "NVUESCHEMA_VALIDATE_HELPER=1")
+			output, err := cmd.CombinedOutput()
 			if (err == nil) != tc.valid {
-				t.Fatalf("valid=%v, error=%v", tc.valid, err)
+				t.Fatalf("valid=%v, error=%v\n%s", tc.valid, err, output)
 			}
 		})
 	}
+}
+
+// Exercise the command's exit status without changing its production behavior.
+func TestValidateCommandHelper(t *testing.T) {
+	if os.Getenv("NVUESCHEMA_VALIDATE_HELPER") != "1" {
+		return
+	}
+	cmd := newValidateCmd()
+	cmd.SetArgs(os.Args[len(os.Args)-2:])
+	if err := cmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+	os.Exit(0)
 }

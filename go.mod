@@ -4,9 +4,10 @@ go 1.26.1
 
 require (
 	github.com/charmbracelet/log v1.0.0
-	github.com/google/jsonschema-go v0.4.2
+	github.com/dlclark/regexp2 v1.11.5
 	github.com/jwalton/gchalk v1.3.0
 	github.com/nemith/dothome v0.0.0-20240412002543-5e7c77bafef3
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -40,5 +41,5 @@ require (
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.3.8 // indirect
+	golang.org/x/text v0.14.0 // indirect
 )
