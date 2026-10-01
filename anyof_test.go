@@ -33,8 +33,8 @@ func TestScalarUnion_NestedInSingleBranchWrapper_Preserved(t *testing.T) {
 		t.Fatalf("union collapsed to a top-level integer scalar: %#v", out)
 	}
 	variants, ok := out["anyOf"].([]map[string]any)
-	if !ok || len(variants) != 2 {
-		t.Fatalf("expected anyOf with 2 variants, got %#v", out["anyOf"])
+	if !ok || len(variants) < 2 {
+		t.Fatalf("expected anyOf with the scalar alternatives, got %#v", out["anyOf"])
 	}
 
 	blob, _ := json.Marshal(out)

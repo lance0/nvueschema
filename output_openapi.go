@@ -60,6 +60,10 @@ func rewriteRefs(obj any) {
 		for _, val := range v {
 			rewriteRefs(val)
 		}
+	case []map[string]any:
+		for _, val := range v {
+			rewriteRefs(val)
+		}
 	case []any:
 		for _, val := range v {
 			rewriteRefs(val)

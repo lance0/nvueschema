@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
+	"slices"
 )
 
 // WriteJSONSchema outputs the config schema as a standalone JSON Schema draft-07 document.
@@ -67,15 +67,14 @@ func (s *Config) ToJSONSchema() map[string]any {
 		typ = "object"
 	}
 
-	// Format-based type refinement.
-	if flat.Format != "" {
-		if jsDef := formatToJSONSchemaDef(flat.Format); jsDef != "" {
-			out["$ref"] = "#/$defs/" + jsDef
-			// Still include description/comment, but type comes from the $ref.
-			if flat.Description != "" {
-				out["description"] = flat.Description
-			}
-			return out
+	// A format reference is an additional constraint, not a replacement
+	// for bounds, enums, patterns, or annotations on this field.
+	if jsDef := formatToJSONSchemaDef(flat.Format); jsDef != "" {
+		ref := map[string]any{"$ref": "#/$defs/" + jsDef}
+		if flat.Nullable {
+			out["anyOf"] = []map[string]any{ref, {"type": "null"}}
+		} else {
+			out["$ref"] = ref["$ref"]
 		}
 	}
 
@@ -92,7 +91,11 @@ func (s *Config) ToJSONSchema() map[string]any {
 
 	// Enum
 	if len(flat.Enum) > 0 {
-		out["enum"] = flat.Enum
+		values := slices.Clone(flat.Enum)
+		if flat.Nullable && !slices.ContainsFunc(values, func(v any) bool { return v == nil }) {
+			values = append(values, nil)
+		}
+		out["enum"] = values
 	}
 
 	// Numeric constraints.
@@ -151,66 +154,47 @@ func (s *Config) ToJSONSchema() map[string]any {
 }
 
 func scalarUnionToJSONSchema(s *Config) map[string]any {
-	variants := scalarUnionVariants(s)
-
-	out := map[string]any{}
-	if s.Description != "" {
-		out["description"] = s.Description
+	// Preserve constraints on wrappers as well as on the leaf branches.
+	base := *s
+	base.AnyOf, base.OneOf = nil, nil
+	out := base.ToJSONSchema()
+	key, variants := "anyOf", s.AnyOf
+	if len(variants) == 0 {
+		key, variants = "oneOf", s.OneOf
 	}
-	if s.Default != nil {
-		out["default"] = s.Default
-	}
-
 	var schemas []map[string]any
 	for _, v := range variants {
-		branch := map[string]any{}
-		if v.Type != "" {
-			if v.Nullable {
-				branch["type"] = []string{v.Type, "null"}
-			} else {
-				branch["type"] = v.Type
-			}
+		branch := v.ToJSONSchema()
+		// Flatten only a bare anyOf. Constraints and nullability attached to
+		// intermediate wrappers must remain in force; oneOf is exclusive.
+		if inner, ok := branch["anyOf"].([]map[string]any); key == "anyOf" && ok && len(branch) == 1 {
+			schemas = append(schemas, inner...)
+		} else {
+			schemas = append(schemas, branch)
 		}
-		if len(v.Enum) > 0 {
-			branch["enum"] = v.Enum
-		}
-		// Carry each branch's scalar constraints so a union like
-		// integer(0-255) | string(enum) stays faithful rather than degrading
-		// to bare types.
-		if v.Minimum != nil {
-			branch["minimum"] = *v.Minimum
-		}
-		if v.Maximum != nil {
-			branch["maximum"] = *v.Maximum
-		}
-		if v.MinLength != nil {
-			branch["minLength"] = *v.MinLength
-		}
-		if v.MaxLength != nil {
-			branch["maxLength"] = *v.MaxLength
-		}
-		if v.Pattern != "" {
-			branch["pattern"] = v.Pattern
-		}
-		schemas = append(schemas, branch)
 	}
-
-	if len(schemas) == 1 {
-		// Unwrap single-variant.
-		maps.Copy(out, schemas[0])
-	} else {
-		out["anyOf"] = schemas
-	}
-
 	if s.Nullable {
-		// Ensure null is allowed.
-		if _, hasAnyOf := out["anyOf"]; !hasAnyOf {
-			if t, ok := out["type"].(string); ok {
-				out["type"] = []string{t, "null"}
-			}
+		if key == "oneOf" {
+			schemas = []map[string]any{{"oneOf": schemas}}
+			key = "anyOf"
+		}
+		schemas = append(schemas, map[string]any{"type": "null"})
+	}
+	composition := map[string]any{key: schemas}
+	if len(schemas) == 1 {
+		composition = schemas[0]
+	}
+	for k := range composition {
+		if _, exists := out[k]; exists && k != "description" && k != "default" && k != "$comment" {
+			out["allOf"] = []map[string]any{composition}
+			return out
 		}
 	}
-
+	for k, v := range composition {
+		if _, exists := out[k]; !exists {
+			out[k] = v
+		}
+	}
 	return out
 }
 
