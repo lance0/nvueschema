@@ -45,89 +45,43 @@ func (d *Diff) FilterAffected(configPaths []string) *Diff {
 }
 
 func diffSchemas(old, newer *Config, path string) []Change {
+	if old == nil && newer == nil {
+		return nil
+	}
+	if old == nil {
+		return makeAddRemoveChange(newer, path, "added")
+	}
+	if newer == nil {
+		return makeAddRemoveChange(old, path, "removed")
+	}
 	oldFlat := FlattenComposite(old)
 	newFlat := FlattenComposite(newer)
-
 	var changes []Change
 
-	// Collect property names from both.
-	oldProps := propNames(oldFlat)
-	newProps := propNames(newFlat)
+	// Compare this node, regardless of whether it was reached through a
+	// property, a map value, or an array item.
+	if desc := diffTypes(old, newer); desc != "" {
+		changes = append(changes, Change{Path: path, Kind: "changed", Desc: desc})
+	} else if desc := diffEnums(old, newer); desc != "" {
+		changes = append(changes, Change{Path: path, Kind: "changed", Desc: desc})
+	}
+	changes = append(changes, diffConstraints(old, newer, path)...)
 
-	// Removed properties — emit with inline type for leaves, recurse for objects.
-	for _, name := range oldProps {
+	for _, name := range propNames(oldFlat) {
 		if !hasProperty(newFlat, name) {
-			childPath := joinPath(path, name)
-			changes = append(changes, makeAddRemoveChange(oldFlat.Properties[name], childPath, "removed")...)
+			changes = append(changes, makeAddRemoveChange(oldFlat.Properties[name], joinPath(path, name), "removed")...)
 		}
 	}
-
-	// Added properties — emit with inline type for leaves, recurse for objects.
-	for _, name := range newProps {
-		if !hasProperty(oldFlat, name) {
-			childPath := joinPath(path, name)
-			changes = append(changes, makeAddRemoveChange(newFlat.Properties[name], childPath, "added")...)
-		}
-	}
-
-	// Recurse into shared properties.
-	for _, name := range newProps {
-		if !hasProperty(oldFlat, name) {
-			continue
-		}
+	for _, name := range propNames(newFlat) {
 		childPath := joinPath(path, name)
-		oldChild := oldFlat.Properties[name]
-		newChild := newFlat.Properties[name]
-
-		// Check for type changes.
-		if desc := diffTypes(oldChild, newChild); desc != "" {
-			changes = append(changes, Change{
-				Path: childPath,
-				Kind: "changed",
-				Desc: desc,
-			})
-
-			// If type changed from scalar to object, show new fields as added.
-			// If type changed from object to scalar, show old fields as removed.
-			oldChildFlat := FlattenComposite(oldChild)
-			newChildFlat := FlattenComposite(newChild)
-			if !hasProps(oldChildFlat) && hasProps(newChildFlat) {
-				changes = append(changes, diffSchemas(&Config{}, newChild, childPath)...)
-			} else if hasProps(oldChildFlat) && !hasProps(newChildFlat) {
-				changes = append(changes, diffSchemas(oldChild, &Config{}, childPath)...)
-			}
-			continue
+		if !hasProperty(oldFlat, name) {
+			changes = append(changes, makeAddRemoveChange(newFlat.Properties[name], childPath, "added")...)
+		} else {
+			changes = append(changes, diffSchemas(oldFlat.Properties[name], newFlat.Properties[name], childPath)...)
 		}
-
-		// Check for enum changes.
-		if desc := diffEnums(oldChild, newChild); desc != "" {
-			changes = append(changes, Change{
-				Path: childPath,
-				Kind: "changed",
-				Desc: desc,
-			})
-		}
-
-		// Check for constraint changes.
-		changes = append(changes, diffConstraints(oldChild, newChild, childPath)...)
-
-		// Recurse into nested objects.
-		changes = append(changes, diffSchemas(oldChild, newChild, childPath)...)
 	}
-
-	// Diff additionalProperties (dict value schemas).
-	if oldFlat.AdditionalProperties != nil || newFlat.AdditionalProperties != nil {
-		oldAP := oldFlat.AdditionalProperties
-		newAP := newFlat.AdditionalProperties
-		if oldAP == nil {
-			oldAP = &Config{}
-		}
-		if newAP == nil {
-			newAP = &Config{}
-		}
-		changes = append(changes, diffSchemas(oldAP, newAP, joinPath(path, "[*]"))...)
-	}
-
+	changes = append(changes, diffSchemas(oldFlat.AdditionalProperties, newFlat.AdditionalProperties, joinPath(path, "[*]"))...)
+	changes = append(changes, diffSchemas(oldFlat.Items, newFlat.Items, joinPath(path, "[]"))...)
 	return changes
 }
 
@@ -311,6 +265,19 @@ func diffConstraints(old, newer *Config, path string) []Change {
 	newFlat := FlattenComposite(newer)
 
 	var changes []Change
+
+	if oldFlat.Nullable != newFlat.Nullable {
+		changes = append(changes, Change{Path: path, Kind: "changed", Desc: fmt.Sprintf("nullable: %t -> %t", oldFlat.Nullable, newFlat.Nullable)})
+	}
+	required := append(slices.Clone(oldFlat.Required), newFlat.Required...)
+	slices.Sort(required)
+	for _, name := range slices.Compact(required) {
+		wasRequired := slices.Contains(oldFlat.Required, name)
+		isRequired := slices.Contains(newFlat.Required, name)
+		if wasRequired != isRequired {
+			changes = append(changes, Change{Path: joinPath(path, name), Kind: "changed", Desc: fmt.Sprintf("required: %t -> %t", wasRequired, isRequired)})
+		}
+	}
 
 	if !floatPtrEqual(oldFlat.Minimum, newFlat.Minimum) {
 		changes = append(changes, Change{
