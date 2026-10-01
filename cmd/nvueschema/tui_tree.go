@@ -211,12 +211,17 @@ func (ts *treeState) walkSetExpand(n *nvueschema.Node, expand bool) {
 	for _, child := range n.Children {
 		_, eff := nvueschema.CollapseNode(child)
 		if len(eff.Children) > 0 {
-			ts.walkSetExpand(child, expand)
+			// Expansion is keyed by the displayed child, but traversal starts
+			// at the effective node after collapsing its single-child chain.
+			if expand {
+				ts.expanded[child] = true
+			} else {
+				delete(ts.expanded, child)
+			}
 			ts.walkSetExpand(eff, expand)
 		}
 	}
 }
-
 
 // renderTreeLine renders a single tree row as a string.
 func renderTreeLine(row flatRow, width int, isCursor bool) string {
