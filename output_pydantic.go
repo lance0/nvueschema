@@ -3,6 +3,7 @@ package nvueschema
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 )
 
@@ -22,11 +23,13 @@ func WritePydantic(w io.Writer, schema *Config, info map[string]any) error {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "from __future__ import annotations")
 	fmt.Fprintln(w)
+	fmt.Fprintln(w, "import re")
+	fmt.Fprintln(w, "from functools import partial")
 	fmt.Fprintln(w, "from datetime import date, datetime, time")
 	fmt.Fprintln(w, "from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network")
 	fmt.Fprintln(w, "from typing import Annotated, Any, Dict, List, Literal, Optional, Union")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "from pydantic import AnyUrl, BaseModel, Field, FilePath, SecretStr")
+	fmt.Fprintln(w, "from pydantic import AnyUrl, BaseModel, BeforeValidator, Field, FilePath, SecretStr")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "# Validated network configuration types")
 	for _, td := range typedefs {
@@ -38,6 +41,14 @@ func WritePydantic(w io.Writer, schema *Config, info map[string]any) error {
 	}
 	fmt.Fprintln(w)
 
+	fmt.Fprint(w, `def _validate_string(value: Any, *, min_length: int = 0, max_length: Optional[int] = None, pattern: Optional[str] = None) -> Any:
+    if isinstance(value, str):
+        if len(value) < min_length or (max_length is not None and len(value) > max_length):
+            raise ValueError("string length outside schema bounds")
+        if pattern is not None and re.search(pattern, value) is None:
+            raise ValueError("string does not match schema pattern")
+    return value
+`)
 	g.emitModel("NvueConfig", schema)
 
 	return nil
@@ -136,27 +147,18 @@ func (g *pyGen) pyType(contextName string, s *Config) string {
 
 	// Handle anyOf/oneOf with only scalar branches as Union.
 	if isScalarUnion(s) {
-		return scalarUnionType(s)
+		return constrainedPyType(scalarUnionType(s), s)
 	}
 
 	flat := FlattenComposite(s)
 
 	if len(flat.Enum) > 0 {
-		return "str"
+		return scalarPyType(flat)
 	}
 
 	switch flat.Type {
-	case "string":
-		if t := formatToPyType(flat.Format); t != "" {
-			return t
-		}
-		return "str"
-	case "integer":
-		return "int"
-	case "number":
-		return "float"
-	case "boolean":
-		return "bool"
+	case "string", "integer", "number", "boolean":
+		return scalarPyType(flat)
 	case "array":
 		inner := g.pyType(contextName+"Item", flat.Items)
 		return fmt.Sprintf("List[%s]", inner)
@@ -192,7 +194,10 @@ func (g *pyGen) pyType(contextName string, s *Config) string {
 
 // scalarUnionType builds a Union[...] type string from scalar anyOf/oneOf branches.
 func scalarUnionType(s *Config) string {
-	variants := scalarUnionVariants(s)
+	variants := s.AnyOf
+	if len(variants) == 0 {
+		variants = s.OneOf
+	}
 	seen := make(map[string]bool)
 	var types []string
 	for _, v := range variants {
@@ -209,6 +214,56 @@ func scalarUnionType(s *Config) string {
 }
 
 func scalarPyType(s *Config) string {
+	if isScalarUnion(s) {
+		return constrainedPyType(scalarUnionType(s), s)
+	}
+	return constrainedPyType(scalarPyBaseType(s), s)
+}
+
+func constrainedPyType(typ string, s *Config) string {
+	var metadata, bounds, stringsBounds []string
+	if s.Minimum != nil {
+		if typ == "int" {
+			bounds = append(bounds, fmt.Sprintf("ge=%.0f", math.Ceil(*s.Minimum)))
+		} else {
+			bounds = append(bounds, fmt.Sprintf("ge=%g", *s.Minimum))
+		}
+	}
+	if s.Maximum != nil {
+		if typ == "int" {
+			bounds = append(bounds, fmt.Sprintf("le=%.0f", math.Floor(*s.Maximum)))
+		} else {
+			bounds = append(bounds, fmt.Sprintf("le=%g", *s.Maximum))
+		}
+	}
+	if len(bounds) > 0 {
+		metadata = append(metadata, "Field("+strings.Join(bounds, ", ")+")")
+	}
+	if s.MinLength != nil {
+		stringsBounds = append(stringsBounds, fmt.Sprintf("min_length=%d", *s.MinLength))
+	}
+	if s.MaxLength != nil {
+		stringsBounds = append(stringsBounds, fmt.Sprintf("max_length=%d", *s.MaxLength))
+	}
+	if s.Pattern != "" {
+		stringsBounds = append(stringsBounds, fmt.Sprintf("pattern=%q", s.Pattern))
+	}
+	// Validate the original string before parsing format types such as IP
+	// addresses. This also keeps local patterns from replacing a typedef's
+	// own pattern, and Python's re supports NVUE lookahead expressions.
+	if len(stringsBounds) > 0 {
+		metadata = append(metadata, "BeforeValidator(partial(_validate_string, "+strings.Join(stringsBounds, ", ")+"))")
+	}
+	if len(metadata) > 0 {
+		typ = "Annotated[" + typ + ", " + strings.Join(metadata, ", ") + "]"
+	}
+	if s.Nullable {
+		typ = "Optional[" + typ + "]"
+	}
+	return typ
+}
+
+func scalarPyBaseType(s *Config) string {
 	if len(s.Enum) > 0 {
 		var vals []string
 		for _, e := range s.Enum {
@@ -255,43 +310,43 @@ func formatToPyType(format string) string {
 }
 
 var pyFormatTypes = map[formatKey]string{
-	fmtIPv4Addr:          "IPv4Address",
-	fmtIPv6Addr:          "IPv6Address",
-	fmtIPAddr:            "Union[IPv4Address, IPv6Address]",
-	fmtIPv4Prefix:        "IPv4Network",
-	fmtIPv6Prefix:        "IPv6Network",
-	fmtMAC:               "MacAddress",
-	fmtInterfaceName:     "InterfaceName",
-	fmtVrfName:           "VrfName",
-	fmtVlanRange:         "VlanRange",
-	fmtPortRange:         "PortRange",
+	fmtIPv4Addr:           "IPv4Address",
+	fmtIPv6Addr:           "IPv6Address",
+	fmtIPAddr:             "Union[IPv4Address, IPv6Address]",
+	fmtIPv4Prefix:         "IPv4Network",
+	fmtIPv6Prefix:         "IPv6Network",
+	fmtMAC:                "MacAddress",
+	fmtInterfaceName:      "InterfaceName",
+	fmtVrfName:            "VrfName",
+	fmtVlanRange:          "VlanRange",
+	fmtPortRange:          "PortRange",
 	fmtRouteDistinguisher: "RouteDistinguisher",
-	fmtRouteTarget:       "RouteTarget",
-	fmtExtCommunity:      "ExtCommunity",
-	fmtBgpCommunity:      "BgpCommunity",
-	fmtEvpnRoute:         "EvpnRoute",
-	fmtBgpRegex:          "BgpRegex",
-	fmtAsnRange:          "AsnRange",
-	fmtEsIdentifier:      "EsIdentifier",
-	fmtSegmentIdentifier: "SegmentIdentifier",
-	fmtHostname:          "Hostname",
-	fmtUserName:          "UserName",
-	fmtSnmpOid:           "SnmpOid",
-	fmtSecretString:      "SecretStr",
-	fmtInteger:           "int",
-	fmtFloat:             "float",
-	fmtDateTime:          "datetime",
-	fmtClockDate:         "date",
-	fmtClockTime:         "time",
-	fmtGenericName:       "str",
-	fmtFileName:          "FilePath",
-	fmtRepoURL:           "AnyUrl",
-	fmtRepoDist:          "str",
-	fmtJSONPointer:       "str",
-	fmtClockID:           "str",
-	fmtSequenceID:        "int",
-	fmtCommand:           "str",
-	fmtInterval:          "str",
+	fmtRouteTarget:        "RouteTarget",
+	fmtExtCommunity:       "ExtCommunity",
+	fmtBgpCommunity:       "BgpCommunity",
+	fmtEvpnRoute:          "EvpnRoute",
+	fmtBgpRegex:           "BgpRegex",
+	fmtAsnRange:           "AsnRange",
+	fmtEsIdentifier:       "EsIdentifier",
+	fmtSegmentIdentifier:  "SegmentIdentifier",
+	fmtHostname:           "Hostname",
+	fmtUserName:           "UserName",
+	fmtSnmpOid:            "SnmpOid",
+	fmtSecretString:       "SecretStr",
+	fmtInteger:            "int",
+	fmtFloat:              "float",
+	fmtDateTime:           "datetime",
+	fmtClockDate:          "date",
+	fmtClockTime:          "time",
+	fmtGenericName:        "str",
+	fmtFileName:           "FilePath",
+	fmtRepoURL:            "AnyUrl",
+	fmtRepoDist:           "str",
+	fmtJSONPointer:        "str",
+	fmtClockID:            "str",
+	fmtSequenceID:         "int",
+	fmtCommand:            "str",
+	fmtInterval:           "str",
 }
 
 var pyReserved = map[string]bool{
