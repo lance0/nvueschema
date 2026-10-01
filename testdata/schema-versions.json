@@ -1,0 +1,97 @@
+[
+  {
+    "version": "5.0",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-50/api/openapi.json",
+    "sha256": "823a5a74e884076eab3a1d93f8717a3035f591fda9b7103396e842572c74a557"
+  },
+  {
+    "version": "5.1",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-51/api/openapi.json",
+    "sha256": "73f902d18e809e3a74842109717dfd4159d3d3dd3114caf2d499902c0eb93e7d"
+  },
+  {
+    "version": "5.2",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-52/api/openapi.json",
+    "sha256": "764867a59de43d7fafaad6a2665b006c2d971b32a58b25cb4d646f440edc9c8d"
+  },
+  {
+    "version": "5.3",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-53/api/openapi.json",
+    "sha256": "f9c46b00b393ac8526b5197d40010108f97620c157338b467e3c2faca845991d"
+  },
+  {
+    "version": "5.4",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-54/api/openapi.json",
+    "sha256": "a4244d3fa51166046528023096b5ecb1ee5fc337f78281c44fe6cb6301fa8cc4"
+  },
+  {
+    "version": "5.5",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-55/api/openapi.json",
+    "sha256": "195688a44cfe479317f70d8997283e2985ea8f40862376b9a5ae9db6002da49a"
+  },
+  {
+    "version": "5.6",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-56/api/openapi.json",
+    "sha256": "6c4ff8f9181ceb8e888b66fa6a93d6f082286ce27384914da44dc8d48f641fb4"
+  },
+  {
+    "version": "5.7",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-57/api/openapi.json",
+    "sha256": "ed6382372fa109a6b080ff36dbfc031ce38d9e29e18f566d001ca60b4975ef9c"
+  },
+  {
+    "version": "5.8",
+    "url": "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-58/api/openapi.json",
+    "sha256": "588fd11f2abcb743939eb53dceba04b6199bc69bce3953565eb264fd7c99fd09"
+  },
+  {
+    "version": "5.9",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.9.0.json",
+    "sha256": "926b8563af84f2d33c73a263a3ca2f18ca21bc7c6d9e62d6f20f4acb431cc05c"
+  },
+  {
+    "version": "5.10",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.10.0.json",
+    "sha256": "99ebf7e774890662967982930aa72850c0f1bd92f37ae31437ae41efbead9ee3"
+  },
+  {
+    "version": "5.11",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.11.0.json",
+    "sha256": "4d5beb03dfd11c5104fa35956a332ba92eb28811fca13449decc313a9c4e6943"
+  },
+  {
+    "version": "5.12",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.12.0.json",
+    "sha256": "70143ae31a9983d2987bf93179b2f29b6cd7d6e075ed812ec3a940e48e1c6023"
+  },
+  {
+    "version": "5.13",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.13.0.json",
+    "sha256": "a777f44eb1ab4735ce8a8d0dba20ad36165e78e4a0a701609e01b440b5fc774a"
+  },
+  {
+    "version": "5.14",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.14.0.json",
+    "sha256": "7a56e7e7cbee349e1d1d92d13f6a85fbdeaebddcf17a61507657c9f78a9aeffa"
+  },
+  {
+    "version": "5.15",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.15.0.json",
+    "sha256": "58a1e7663799632a9567436f4cdd6ee9ebacf866657b71e2908541016aebeef6"
+  },
+  {
+    "version": "5.16",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.16.0.json",
+    "sha256": "a8d9cc3c9b6c9723f41e5dab33e447c3c0c922e48d6ba36c0b9ca19bbfe82347"
+  },
+  {
+    "version": "5.17",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.17.0.json",
+    "sha256": "de6f4dd89a453a233fe3d1a6f4b58283824bffb4ed5b2414b8c462005ae81339"
+  },
+  {
+    "version": "5.18",
+    "url": "https://api-prod.nvidia.com/openapi-browser/openapi%205.18.0.json",
+    "sha256": "328994dca2014a7fa9d44e00eda2a1701728f12ff2cf620aee5a5608aee29cb3"
+  }
+]

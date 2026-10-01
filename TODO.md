@@ -38,7 +38,12 @@ of the same underlying defects) and one unused-import warning:
   dialect. Correct quoting preserves the source pattern but does not translate
   lookahead or unsupported escapes. Define supported conversions and explicit
   errors for unsupported patterns, with semantic regression tests.
-- [ ] Require generator integration dependencies in CI and add representative
-  NVUE source fixtures that go through parsing, generation, and validation.
-  Python integrations currently skip when dependencies are absent, Protobuf
-  compilation skips without protoc, and full-schema checks remain manual.
+- [x] Add a repeatable 5.0–5.18 schema matrix covering parsing and every output
+  format, including Protobuf validation annotations. Pin downloaded schemas by
+  checksum and require all external validators when the matrix is enabled.
+  All 19 versions pass the non-YANG checks; YANG reports 207–586 errors per
+  version from the defects above. OpenAPI coverage checks the configuration
+  component and references, not the complete document.
+- [ ] Run the version matrix in CI. Ordinary unit tests still allow optional
+  integrations to skip, and there is no checked-in workflow enforcing the full
+  matrix. Add focused source fixtures as the YANG defects above are fixed.

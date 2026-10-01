@@ -92,3 +92,45 @@ NVUESCHEMA_PYTHON=/tmp/nvueschema-tests/bin/python go test ./...
 
 An explicitly configured `NVUESCHEMA_PYTHON` must contain the required packages;
 missing packages then fail the tests instead of skipping them.
+
+### NVUE version matrix
+
+`TestSchemaVersions` covers every 5.x release series from 5.0 through 5.18,
+listed with source URLs and SHA-256 checksums in
+[`testdata/schema-versions.json`](testdata/schema-versions.json).
+It uses local downloads so ordinary unit tests do not require network access.
+To prepare those downloads and the Protobuf validation definitions:
+
+```sh
+mkdir -p /tmp/nvueschema-specs
+go build -o /tmp/nvueschema-tests-cli ./cmd/nvueschema
+for minor in $(seq 0 18); do
+  /tmp/nvueschema-tests-cli fetch "5.$minor" --no-cache \
+    -o "/tmp/nvueschema-specs/openapi-5.$minor.json"
+done
+buf export buf.build/bufbuild/protovalidate --output /tmp/nvueschema-proto
+```
+
+With `go` and `protoc` on PATH and the Python environment above installed:
+
+```sh
+NVUESCHEMA_SPEC_DIR=/tmp/nvueschema-specs \
+NVUESCHEMA_PYTHON=/tmp/nvueschema-tests/bin/python \
+NVUESCHEMA_PROTO_INCLUDE=/tmp/nvueschema-proto \
+  go test -count=1 -coverpkg=./... -coverprofile=/tmp/nvueschema-coverage.out ./...
+go tool cover -html=/tmp/nvueschema-coverage.out
+```
+
+Enabling the matrix makes missing schemas, changed checksums, and missing
+validator dependencies fail the tests. If NVIDIA updates a published schema,
+verify the release before updating its manifest checksum.
+
+Each release exercises the parser and CLI generation, compiles generated Go
+and Protobuf (with and without validation annotations), imports Pydantic models,
+and runs pyang on YANG. JSON Schema, the OpenAPI configuration component, and
+Pydantic also check valid and invalid MTUs. The OpenAPI check validates the
+configuration schema and its references, not the entire OpenAPI document.
+
+The full matrix currently fails on YANG for all 19 releases; the remaining
+generator defects are tracked in [TODO.md](TODO.md). These failures are reported
+normally, not skipped or marked as expected successes.
