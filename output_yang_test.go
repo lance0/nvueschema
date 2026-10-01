@@ -173,6 +173,33 @@ func TestYANGIntegerRanges(t *testing.T) {
 
 type yangValues struct{ Good, Bad []string }
 
+func TestYANGNumericEnumsAndUnions(t *testing.T) {
+	lo, hi := 2.0, 3.0
+	schema := &Config{Properties: map[string]*Config{
+		"version":    {Type: "integer", Enum: []any{float64(3), float64(2), nil, float64(3)}, Default: float64(2)},
+		"bounded":    {AnyOf: []*Config{{Type: "integer", Minimum: &lo, Maximum: &hi}, {Type: "string", Enum: []any{"auto"}}}},
+		"enum-union": {AnyOf: []*Config{{Type: "integer", Enum: []any{2, 3, nil}}, {Type: "string", Enum: []any{"auto"}}}},
+		"wrapped":    {AnyOf: []*Config{{Type: "integer", Enum: []any{3, nil}}}},
+		"intersect":  {Type: "integer", Enum: []any{1, 2, 3, 4}, Minimum: &lo, Maximum: &hi},
+	}}
+	var buf bytes.Buffer
+	if err := WriteYANG(&buf, schema, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `range "2 | 3";`) {
+		t.Error("numeric enum range missing")
+	}
+	t.Run("validate", func(t *testing.T) {
+		checkYANGValues(t, buf.Bytes(), map[string]yangValues{
+			"version":    {Good: []string{"2", "3"}, Bad: []string{"1", "4", "auto"}},
+			"bounded":    {Good: []string{"2", "3", "auto"}, Bad: []string{"1", "4"}},
+			"enum-union": {Good: []string{"2", "3", "auto"}, Bad: []string{"1", "4"}},
+			"wrapped":    {Good: []string{"3"}, Bad: []string{"2", "4"}},
+			"intersect":  {Good: []string{"2", "3"}, Bad: []string{"1", "4"}},
+		})
+	})
+}
+
 // Exercise pyang's resolved type restrictions with actual leaf values.
 func checkYANGValues(t *testing.T, source []byte, values map[string]yangValues) {
 	t.Helper()
