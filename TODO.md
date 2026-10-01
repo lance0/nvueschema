@@ -3,7 +3,7 @@
 Each item gets a separate Jujutsu change, with regression tests committed alongside the fix.
 
 - [x] 1. Make CLI validation handle NVUE regular expressions, including negative lookahead, without weakening validation.
-- [ ] 2. Fix Protobuf map-entry name collisions and message deduplication across nested scopes; compile generated fixtures.
+- [x] 2. Fix Protobuf map-entry name collisions and message deduplication across nested scopes; compile generated fixtures.
 - [ ] 3. Emit valid YANG type statements; validate generated fixtures with a YANG parser.
 - [ ] 4. Preserve JSON Schema format constraints, local constraints, and nullability, including scalar unions.
 - [ ] 5. Preserve Pydantic field bounds, lengths, and patterns; exercise generated models with valid and invalid values.
