@@ -11,7 +11,6 @@ import (
 func WriteProtobuf(w io.Writer, schema *Config, info map[string]any, validate bool) error {
 	g := &protoGen{
 		w:        w,
-		messages: make(map[string]bool),
 		validate: validate,
 	}
 
@@ -38,46 +37,58 @@ func WriteProtobuf(w io.Writer, schema *Config, info map[string]any, validate bo
 
 type protoGen struct {
 	w        io.Writer
-	messages map[string]bool
 	validate bool
 }
 
 func (g *protoGen) emitMessage(name string, s *Config, depth int) {
-	if g.messages[name] {
-		return
-	}
-	g.messages[name] = true
-
 	merged := FlattenComposite(s)
 	indent := strings.Repeat("  ", depth)
 	props := sortedProperties(merged)
 
-	// Emit nested messages for child structs first.
+	// Names belong to this message's scope. Reserve the entry messages
+	// protoc synthesizes for maps before naming our own nested messages.
+	used := map[string]bool{name: true}
+	fieldTypes := make(map[string]protoTypeInfo, len(props))
+	for _, p := range props {
+		typ := g.protoType(p.name, p.schema)
+		fieldTypes[p.name] = typ
+		if typ.isMap {
+			used[toPascal(protoFieldName(p.name))+"Entry"] = true
+		}
+	}
 	var nested []struct {
 		msgName string
 		schema  *Config
 	}
 	for _, p := range props {
-		childName := toPascal(p.name)
 		if isScalarUnion(p.schema) {
 			continue
 		}
 		flat := FlattenComposite(p.schema)
-		if hasProps(flat) {
-			nested = append(nested, struct {
-				msgName string
-				schema  *Config
-			}{childName, p.schema})
+		var child *Config
+		base := toPascal(protoFieldName(p.name))
+		switch {
+		case hasProps(flat):
+			child = p.schema
+		case flat.AdditionalProperties != nil && hasProps(FlattenComposite(flat.AdditionalProperties)):
+			child = flat.AdditionalProperties
+			base += "Value"
 		}
-		if flat.AdditionalProperties != nil {
-			apFlat := FlattenComposite(flat.AdditionalProperties)
-			if hasProps(apFlat) {
-				nested = append(nested, struct {
-					msgName string
-					schema  *Config
-				}{childName + "Entry", flat.AdditionalProperties})
-			}
+		if child == nil {
+			continue
 		}
+		childName := base
+		for suffix := 2; used[childName]; suffix++ {
+			childName = fmt.Sprintf("%s%d", base, suffix)
+		}
+		used[childName] = true
+		nested = append(nested, struct {
+			msgName string
+			schema  *Config
+		}{childName, child})
+		typ := fieldTypes[p.name]
+		typ.typeName = childName
+		fieldTypes[p.name] = typ
 	}
 
 	// Emit the message.
@@ -101,7 +112,7 @@ func (g *protoGen) emitMessage(name string, s *Config, depth int) {
 	fieldNum := 1
 	for i, p := range props {
 		flat := FlattenComposite(p.schema)
-		protoType := g.protoType(p.name, p.schema)
+		protoType := fieldTypes[p.name]
 		fieldName := protoFieldName(p.name)
 
 		constraint := ""
