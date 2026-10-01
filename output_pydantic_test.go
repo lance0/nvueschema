@@ -13,11 +13,12 @@ func TestPydanticConstraints(t *testing.T) {
 	lo, hi := 2, 8
 	large := float64(1 << 64)
 	schema := &Config{Properties: map[string]*Config{
-		"counter": {Type: "integer", Maximum: &large},
-		"mtu":     {Type: "integer", Minimum: &min, Maximum: &max},
-		"name":    {Type: "string", MinLength: &lo, MaxLength: &hi, Pattern: `^(?!none$)[a-z]+$`},
-		"timer":   {AnyOf: []*Config{{Type: "integer", Minimum: &min, Maximum: &max}, {Type: "string", Enum: []any{"auto"}}}},
-		"mac":     {Type: "string", Format: "mac", Pattern: `^00:`},
+		"bounded-choice": {Minimum: &min, Maximum: &max, AnyOf: []*Config{{Type: "integer"}, {Type: "string", Enum: []any{"auto"}}}},
+		"counter":        {Type: "integer", Maximum: &large},
+		"mtu":            {Type: "integer", Minimum: &min, Maximum: &max},
+		"name":           {Type: "string", MinLength: &lo, MaxLength: &hi, Pattern: `^(?!none$)[a-z]+$`},
+		"timer":          {AnyOf: []*Config{{Type: "integer", Minimum: &min, Maximum: &max}, {Type: "string", Enum: []any{"auto"}}}},
+		"mac":            {Type: "string", Format: "mac", Pattern: `^00:`},
 	}}
 	var buf bytes.Buffer
 	if err := WritePydantic(&buf, schema, nil); err != nil {
@@ -30,9 +31,9 @@ func TestPydanticConstraints(t *testing.T) {
 	t.Run("validate", func(t *testing.T) {
 		runPydantic(t, buf.Bytes(), `
 from pydantic import ValidationError
-for value in ({"counter": 2**64}, {"mtu": 552}, {"mtu": 9216}, {"name": "ok"}, {"timer": "auto"}, {"timer": 552}, {"mac": "00:11:22:33:44:55"}):
+for value in ({"bounded-choice": "auto"}, {"bounded-choice": 552}, {"counter": 2**64}, {"mtu": 552}, {"mtu": 9216}, {"name": "ok"}, {"timer": "auto"}, {"timer": 552}, {"mac": "00:11:22:33:44:55"}):
     models.NvueConfig.model_validate(value)
-for value in ({"counter": 2**64+1}, {"mtu": -1}, {"mtu": 9217}, {"name": "a"}, {"name": "toolongname"}, {"name": "none"}, {"name": "ABC"}, {"timer": 1}, {"timer": "bad"}, {"mac": "11:11:22:33:44:55"}, {"mac": "00:bad"}):
+for value in ({"bounded-choice": 1}, {"bounded-choice": 9217}, {"counter": 2**64+1}, {"mtu": -1}, {"mtu": 9217}, {"name": "a"}, {"name": "toolongname"}, {"name": "none"}, {"name": "ABC"}, {"timer": 1}, {"timer": "bad"}, {"mac": "11:11:22:33:44:55"}, {"mac": "00:bad"}):
     try:
         models.NvueConfig.model_validate(value)
     except ValidationError:
