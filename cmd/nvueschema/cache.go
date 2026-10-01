@@ -42,36 +42,28 @@ func cachedFetch(v nvueschema.VersionInfo, noCache bool) ([]byte, error) {
 	cachedData, _ := os.ReadFile(jsonPath)
 	cachedLastMod, _ := os.ReadFile(tsPath)
 	storedLastMod := strings.TrimSpace(string(cachedLastMod))
+	if len(cachedData) == 0 {
+		storedLastMod = ""
+	}
 
-	// Have cache + Last-Modified: do conditional GET.
-	if len(cachedData) > 0 && storedLastMod != "" {
-		body, lastMod, notModified, err := httpFetchConditional(u, storedLastMod)
-		if err != nil {
+	// A cache without a validator still needs an unconditional refresh.
+	// Keep the same path for initial downloads so Last-Modified is retained.
+	body, lastMod, notModified, err := httpFetchConditional(u, storedLastMod)
+	if err != nil {
+		if len(cachedData) > 0 {
 			logger.Warn("validation failed, using cache", "err", err)
 			return cachedData, nil
 		}
-		if notModified {
-			logger.Info("cache is current", "path", jsonPath)
-			return cachedData, nil
-		}
-		writeCache(jsonPath, tsPath, body, lastMod)
-		return body, nil
-	}
-
-	// Have cache but no Last-Modified: just use it.
-	if len(cachedData) > 0 {
-		logger.Info("using cached", "path", jsonPath)
-		return cachedData, nil
-	}
-
-	// No cache: download fresh.
-	logger.Info("fetching", "url", u)
-	body, err := nvueschema.FetchSpec(v)
-	if err != nil {
 		return nil, err
 	}
-
-	writeCache(jsonPath, tsPath, body, "")
+	if notModified {
+		if len(cachedData) == 0 {
+			return nil, fmt.Errorf("server returned 304 without a cached schema")
+		}
+		logger.Info("cache is current", "path", jsonPath)
+		return cachedData, nil
+	}
+	writeCache(jsonPath, tsPath, body, lastMod)
 	return body, nil
 }
 
@@ -94,7 +86,9 @@ func httpFetchConditional(url, ifModSince string) (body []byte, lastMod string, 
 		return nil, "", false, err
 	}
 	req.Header.Set("User-Agent", nvueschema.UserAgent)
-	req.Header.Set("If-Modified-Since", ifModSince)
+	if ifModSince != "" {
+		req.Header.Set("If-Modified-Since", ifModSince)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -129,9 +123,8 @@ func writeCache(jsonPath, tsPath string, body []byte, lastMod string) {
 
 	logger.Info("cached", "path", jsonPath, "bytes", len(body))
 
-	if lastMod != "" {
-		if err := os.WriteFile(tsPath, []byte(lastMod), 0o644); err != nil {
-			logger.Warn("could not write timestamp", "err", err)
-		}
+	// Empty metadata clears an old validator when the new response omits it.
+	if err := os.WriteFile(tsPath, []byte(lastMod), 0o644); err != nil {
+		logger.Warn("could not write timestamp", "err", err)
 	}
 }
