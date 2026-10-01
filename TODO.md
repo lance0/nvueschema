@@ -9,6 +9,6 @@ Each item gets a separate Jujutsu change, with regression tests committed alongs
 - [x] 5. Preserve Pydantic field bounds, lengths, and patterns; exercise generated models with valid and invalid values.
 - [x] 6. Detect changes to array items, map values, required properties, and nullability in schema diffs.
 - [x] 7. Preserve cache validators on the first download and revalidate cached schemas on subsequent fetches.
-- [ ] 8. Visit each subtree once when expanding the browser tree; add deep-tree coverage and benchmarks.
+- [x] 8. Visit each subtree once when expanding the browser tree; add deep-tree coverage and benchmarks.
 - [ ] 9. Emit object models referenced by array items in Go, Python, and Protobuf; compile/initialize generated fixtures.
 - [ ] 10. Propagate writer errors from Pydantic, YANG, and Protobuf generation, including short writes.
