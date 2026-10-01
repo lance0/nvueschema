@@ -3,6 +3,7 @@ package nvueschema
 import (
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -300,14 +301,14 @@ func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
 		}
 		fmt.Fprintf(w, "%s    length \"%d..%s\";\n", indent, lo, hiStr)
 	}
-	if (yangType == "int64" || yangType == "decimal64") && (s.Minimum != nil || s.Maximum != nil) {
+	if (yangType == "int64" || yangType == "uint64" || yangType == "decimal64") && (s.Minimum != nil || s.Maximum != nil) {
 		lo := "min"
 		hi := "max"
 		if s.Minimum != nil {
-			lo = fmtNum(*s.Minimum)
+			lo = yangRangeBound(*s.Minimum, yangType)
 		}
 		if s.Maximum != nil {
-			hi = fmtNum(*s.Maximum)
+			hi = yangRangeBound(*s.Maximum, yangType)
 		}
 		fmt.Fprintf(w, "%s    range \"%s..%s\";\n", indent, lo, hi)
 	}
@@ -317,6 +318,9 @@ func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
 func toYANGType(s *Config) string {
 	// Check format first.
 	if t := formatToYANGType(s.Format); t != "" {
+		if t == "int64" {
+			return yangIntegerType(s)
+		}
 		return t
 	}
 	if len(s.Enum) > 0 {
@@ -326,7 +330,7 @@ func toYANGType(s *Config) string {
 	case "string":
 		return "string"
 	case "integer":
-		return "int64"
+		return yangIntegerType(s)
 	case "number":
 		return "decimal64"
 	case "boolean":
@@ -380,11 +384,36 @@ var yangFormatTypes = map[formatKey]string{
 	fmtDateTime:          "yang:date-and-time",
 }
 
+func yangIntegerType(s *Config) string {
+	if s.Minimum != nil && *s.Minimum >= 0 {
+		return "uint64"
+	}
+	return "int64"
+}
+
+func yangRangeBound(value float64, yangType string) string {
+	// Config stores bounds as float64, which rounds the largest 64-bit
+	// integers upward. Use the native YANG endpoint instead of overflowing.
+	if (yangType == "uint64" && value == float64(math.MaxUint64)) ||
+		(yangType == "int64" && value == float64(math.MaxInt64)) {
+		return "max"
+	}
+	return yangNumber(value)
+}
+
 func yangDefault(value any) string {
 	if number, ok := value.(float64); ok {
-		return yangString(strconv.FormatFloat(number, 'f', -1, 64))
+		return yangString(yangNumber(number))
 	}
 	return yangString(fmt.Sprint(value))
+}
+
+func yangNumber(value float64) string {
+	precision := -1
+	if value == math.Trunc(value) {
+		precision = 0
+	}
+	return strconv.FormatFloat(value, 'f', precision, 64)
 }
 
 // yangString quotes a value using YANG's four supported escape sequences.

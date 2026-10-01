@@ -2,7 +2,9 @@ package nvueschema
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,6 +143,73 @@ func TestYANGDefaults(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestYANGIntegerRanges(t *testing.T) {
+	zero, lower, upper := 0.0, 96.0, float64(math.MaxUint32)
+	signedMin, signedMax, unsignedMax := float64(math.MinInt64), float64(math.MaxInt64), float64(math.MaxUint64)
+	schema := &Config{Properties: map[string]*Config{
+		"bounded":  {Type: "integer", Minimum: &lower, Maximum: &upper, Default: float64(960)},
+		"signed":   {Type: "integer", Minimum: &signedMin, Maximum: &signedMax},
+		"unsigned": {Type: "integer", Format: "integer", Minimum: &zero, Maximum: &unsignedMax},
+	}}
+	var buf bytes.Buffer
+	if err := WriteYANG(&buf, schema, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`range "96..4294967295";`, `range "-9223372036854775808..max";`, `range "0..max";`, "type uint64"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	t.Run("validate", func(t *testing.T) {
+		checkYANGValues(t, buf.Bytes(), map[string]yangValues{
+			"bounded":  {Good: []string{"96", "960", "4294967295"}, Bad: []string{"95", "4294967296"}},
+			"signed":   {Good: []string{"-9223372036854775808", "9223372036854775807"}, Bad: []string{"-9223372036854775809", "9223372036854775808"}},
+			"unsigned": {Good: []string{"0", "18446744073709551615"}, Bad: []string{"-1", "18446744073709551616"}},
+		})
+	})
+}
+
+type yangValues struct{ Good, Bad []string }
+
+// Exercise pyang's resolved type restrictions with actual leaf values.
+func checkYANGValues(t *testing.T, source []byte, values map[string]yangValues) {
+	t.Helper()
+	python := testPython(t, "pyang")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cumulus-nvue.yang"), source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(python, "-c", `
+import json, sys
+from pyang import context, error, repository
+ctx = context.Context(repository.FileRepository("."))
+with open("cumulus-nvue.yang") as f:
+    module = ctx.add_module("cumulus-nvue.yang", f.read())
+ctx.validate()
+errors = [(str(pos), tag, args) for pos, tag, args in ctx.errors if error.is_error(error.err_level(tag))]
+assert not errors, errors
+container = module.search_one("container")
+for name, cases in json.load(sys.stdin).items():
+    leaf = next(s for s in container.substmts if s.keyword == "leaf" and s.arg == name)
+    spec = leaf.search_one("type").i_type_spec
+    for category, expected in (("Good", True), ("Bad", False)):
+        for text in cases[category] or []:
+            errors = []
+            value = spec.str_to_val(errors, leaf.pos, text, module)
+            valid = value is not None and spec.validate(errors, leaf.pos, value, module)
+            assert bool(valid) == expected, (name, text, expected, errors)
+`)
+	cmd.Dir = dir
+	cmd.Stdin = bytes.NewReader(data)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("YANG values: %v\n%s", err, out)
+	}
 }
 
 // Set NVUESCHEMA_PYTHON to a Python environment with pyang and pydantic to
