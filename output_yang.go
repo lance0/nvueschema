@@ -59,9 +59,10 @@ func emitYANGTypedefs(w io.Writer) {
 		if pattern != "" {
 			fmt.Fprintf(w, " {\n")
 			fmt.Fprintf(w, "      pattern '%s';\n", pattern)
-			fmt.Fprintf(w, "    }")
+			fmt.Fprintln(w, "    }")
+		} else {
+			fmt.Fprintln(w, ";")
 		}
-		fmt.Fprintln(w, ";")
 		fmt.Fprintf(w, "    description\n      %q;\n", td.desc)
 		fmt.Fprintln(w, "  }")
 		fmt.Fprintln(w)
