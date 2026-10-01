@@ -11,4 +11,4 @@ Each item gets a separate Jujutsu change, with regression tests committed alongs
 - [x] 7. Preserve cache validators on the first download and revalidate cached schemas on subsequent fetches.
 - [x] 8. Visit each subtree once when expanding the browser tree; add deep-tree coverage and benchmarks.
 - [x] 9. Emit object models referenced by array items in Go, Python, and Protobuf; compile/initialize generated fixtures.
-- [ ] 10. Propagate writer errors from Pydantic, YANG, and Protobuf generation, including short writes.
+- [x] 10. Propagate writer errors from Pydantic, YANG, and Protobuf generation, including short writes.
