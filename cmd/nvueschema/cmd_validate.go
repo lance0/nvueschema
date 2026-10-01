@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -34,7 +33,7 @@ Examples:
   nvueschema validate 5.14 config.txt --config-format yaml
 `),
 		Args: cobra.ExactArgs(2),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ext, err := resolveSpec(args[0], noCache)
 			if err != nil {
 				return fmt.Errorf("loading spec: %w", err)
@@ -68,11 +67,10 @@ Examples:
 			}
 
 			if err := resolved.Validate(instance); err != nil {
-				fmt.Fprintf(os.Stderr, "Validation failed:\n%v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("validation failed: %w", err)
 			}
 
-			fmt.Fprintln(os.Stderr, "Validation passed.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "Validation passed.")
 			return nil
 		},
 	}
