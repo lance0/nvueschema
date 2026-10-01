@@ -24,8 +24,8 @@ Each item gets a separate Jujutsu change, with regression tests committed alongs
 Full-schema validation with pyang 2.7.1 still reports 566 errors (many instances
 of the same underlying defects) and one unused-import warning:
 
-- [ ] Fix YANG default serialization. String defaults are quoted twice, causing
-  enum and pattern validation failures. Test parsed defaults and their validity.
+- [x] Fix YANG default serialization. Preserve string and numeric values without
+  display quoting or named constants; validate parsed defaults with pyang.
 - [ ] Emit valid YANG numeric ranges. Generated ranges contain Go constants such
   as `INT32_MAX`, exceed int64 bounds, or have reversed endpoints. Cover boundary
   values and verify how conflicting source constraints should be represented.
