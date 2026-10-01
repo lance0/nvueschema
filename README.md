@@ -74,3 +74,21 @@ for _, c := range diff.Changes {
 // Validate
 doc := cfg.JSONSchemaDoc()
 ```
+
+## Tests
+
+Run `go test ./...` for the Go regression tests. Generator integration tests
+also compile Protobuf when `protoc` is on `PATH`, and validate YANG/Pydantic
+when their Python packages are available. Missing external tools are reported
+as skipped tests.
+
+To run the Python integration tests in an isolated environment:
+
+```sh
+python3 -m venv /tmp/nvueschema-tests
+/tmp/nvueschema-tests/bin/pip install pyang pydantic
+NVUESCHEMA_PYTHON=/tmp/nvueschema-tests/bin/python go test ./...
+```
+
+An explicitly configured `NVUESCHEMA_PYTHON` must contain the required packages;
+missing packages then fail the tests instead of skipping them.
