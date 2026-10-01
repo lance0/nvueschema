@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +34,7 @@ Examples:
   nvueschema validate 5.14 config.txt --config-format yaml
 `),
 		Args: cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			ext, err := resolveSpec(args[0], noCache)
 			if err != nil {
 				return fmt.Errorf("loading spec: %w", err)
@@ -51,12 +52,18 @@ Examples:
 				return fmt.Errorf("marshaling schema: %w", err)
 			}
 
-			var js jsonschema.Schema
+			var js any
 			if err := json.Unmarshal(jsBytes, &js); err != nil {
 				return fmt.Errorf("parsing schema: %w", err)
 			}
 
-			resolved, err := js.Resolve(nil)
+			compiler := jsonschema.NewCompiler()
+			compiler.UseRegexpEngine(compilePattern)
+			const schemaURL = "https://nvueschema.invalid/config.json"
+			if err := compiler.AddResource(schemaURL, js); err != nil {
+				return fmt.Errorf("loading schema: %w", err)
+			}
+			resolved, err := compiler.Compile(schemaURL)
 			if err != nil {
 				return fmt.Errorf("resolving schema: %w", err)
 			}
@@ -67,10 +74,11 @@ Examples:
 			}
 
 			if err := resolved.Validate(instance); err != nil {
-				return fmt.Errorf("validation failed: %w", err)
+				fmt.Fprintf(os.Stderr, "Validation failed:\n%v\n", err)
+				os.Exit(1)
 			}
 
-			fmt.Fprintln(cmd.ErrOrStderr(), "Validation passed.")
+			fmt.Fprintln(os.Stderr, "Validation passed.")
 			return nil
 		},
 	}
