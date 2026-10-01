@@ -60,7 +60,7 @@ func emitYANGTypedefs(w io.Writer) {
 		fmt.Fprintf(w, "    type string")
 		if pattern != "" {
 			fmt.Fprintf(w, " {\n")
-			fmt.Fprintf(w, "      pattern '%s';\n", pattern)
+			fmt.Fprintf(w, "      pattern %s;\n", yangString(pattern))
 			fmt.Fprintln(w, "    }")
 		} else {
 			fmt.Fprintln(w, ";")
@@ -285,7 +285,7 @@ func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
 
 	fmt.Fprintf(w, "%s  type %s {\n", indent, yangType)
 	if s.Pattern != "" {
-		fmt.Fprintf(w, "%s    pattern '%s';\n", indent, s.Pattern)
+		fmt.Fprintf(w, "%s    pattern %s;\n", indent, yangString(s.Pattern))
 	}
 	if s.MinLength != nil || s.MaxLength != nil {
 		lo := 0
@@ -377,6 +377,17 @@ var yangFormatTypes = map[formatKey]string{
 	fmtSequenceID:        "int64",
 	fmtFloat:             "decimal64",
 	fmtDateTime:          "yang:date-and-time",
+}
+
+// yangString quotes a value using YANG's four supported escape sequences.
+// Go's %q can emit escapes such as \uXXXX that YANG does not recognize.
+func yangString(s string) string {
+	return `"` + strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+		"\t", `\t`,
+	).Replace(s) + `"`
 }
 
 func yangSafe(s string) string {
