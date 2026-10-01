@@ -8,6 +8,8 @@ import (
 
 // WriteYANG outputs the config schema as a YANG module.
 func WriteYANG(w io.Writer, schema *Config, info map[string]any) error {
+	checked := &errorWriter{dst: w}
+	w = checked
 	version := "unknown"
 	if v, ok := info["version"].(string); ok {
 		version = v
@@ -41,7 +43,7 @@ func WriteYANG(w io.Writer, schema *Config, info map[string]any) error {
 	emitYANGContainer(w, "nvue-config", schema, merged, 1)
 
 	fmt.Fprintln(w, "}")
-	return nil
+	return checked.err
 }
 
 func emitYANGTypedefs(w io.Writer) {

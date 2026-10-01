@@ -9,6 +9,8 @@ import (
 // WriteProtobuf outputs the config schema as a .proto file.
 // If validate is true, buf protovalidate constraints are included.
 func WriteProtobuf(w io.Writer, schema *Config, info map[string]any, validate bool) error {
+	checked := &errorWriter{dst: w}
+	w = checked
 	g := &protoGen{
 		w:        w,
 		validate: validate,
@@ -32,7 +34,7 @@ func WriteProtobuf(w io.Writer, schema *Config, info map[string]any, validate bo
 
 	g.emitMessage("NvueConfig", schema, 0)
 
-	return nil
+	return checked.err
 }
 
 type protoGen struct {

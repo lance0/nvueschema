@@ -9,6 +9,8 @@ import (
 
 // WritePydantic outputs the config schema as Python Pydantic v2 model classes.
 func WritePydantic(w io.Writer, schema *Config, info map[string]any) error {
+	checked := &errorWriter{dst: w}
+	w = checked
 	g := &pyGen{
 		w:      w,
 		models: make(map[string]bool),
@@ -51,7 +53,7 @@ func WritePydantic(w io.Writer, schema *Config, info map[string]any) error {
 `)
 	g.emitModel("NvueConfig", schema)
 
-	return nil
+	return checked.err
 }
 
 type pyGen struct {
