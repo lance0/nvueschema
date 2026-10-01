@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -232,26 +233,11 @@ func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) {
 	if len(variants) == 1 {
 		// Single variant — no union wrapper needed.
 		v := variants[0]
-		if len(v.Enum) > 0 {
-			emitYANGTypeBlock(w, "enumeration", v, indent)
-		} else {
-			emitYANGTypeBlock(w, toYANGType(v), v, indent)
-		}
+		emitYANGTypeBlock(w, toYANGType(v), v, indent)
 	} else {
 		fmt.Fprintf(w, "%s  type union {\n", indent)
 		for _, v := range variants {
-			yangType := toYANGType(v)
-			if len(v.Enum) > 0 {
-				fmt.Fprintf(w, "%s    type enumeration {\n", indent)
-				for _, e := range v.Enum {
-					if str, ok := e.(string); ok {
-						fmt.Fprintf(w, "%s      enum %q;\n", indent, str)
-					}
-				}
-				fmt.Fprintf(w, "%s    }\n", indent)
-			} else {
-				fmt.Fprintf(w, "%s    type %s;\n", indent, yangType)
-			}
+			emitYANGTypeBlock(w, toYANGType(v), v, indent+"  ")
 		}
 		fmt.Fprintf(w, "%s  }\n", indent)
 	}
@@ -267,7 +253,7 @@ func emitYANGUnionLeaf(w io.Writer, name string, s *Config, depth int) {
 // emitYANGTypeBlock writes the type statement, including pattern/range restrictions and enums.
 func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
 	hasRestrictions := s.Pattern != "" || s.Minimum != nil || s.Maximum != nil ||
-		s.MinLength != nil || s.MaxLength != nil
+		s.MinLength != nil || s.MaxLength != nil || len(s.Enum) > 0
 
 	if yangType == "enumeration" && len(s.Enum) > 0 {
 		fmt.Fprintf(w, "%s  type enumeration {\n", indent)
@@ -301,7 +287,9 @@ func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) {
 		}
 		fmt.Fprintf(w, "%s    length \"%d..%s\";\n", indent, lo, hiStr)
 	}
-	if (yangType == "int64" || yangType == "uint64" || yangType == "decimal64") && (s.Minimum != nil || s.Maximum != nil) {
+	if (yangType == "int64" || yangType == "uint64" || yangType == "decimal64") && len(s.Enum) > 0 {
+		fmt.Fprintf(w, "%s    range %s;\n", indent, yangString(yangEnumRange(s)))
+	} else if (yangType == "int64" || yangType == "uint64" || yangType == "decimal64") && (s.Minimum != nil || s.Maximum != nil) {
 		lo := "min"
 		hi := "max"
 		if s.Minimum != nil {
@@ -323,7 +311,7 @@ func toYANGType(s *Config) string {
 		}
 		return t
 	}
-	if len(s.Enum) > 0 {
+	if len(s.Enum) > 0 && (s.Type == "string" || s.Type == "") {
 		return "enumeration"
 	}
 	switch s.Type {
@@ -355,33 +343,33 @@ func formatToYANGType(format string) string {
 }
 
 var yangFormatTypes = map[formatKey]string{
-	fmtIPv4Addr:          "inet:ipv4-address",
-	fmtIPv6Addr:          "inet:ipv6-address",
-	fmtIPAddr:            "inet:ip-address",
-	fmtIPv4Prefix:        "inet:ipv4-prefix",
-	fmtIPv6Prefix:        "inet:ipv6-prefix",
-	fmtMAC:               "mac-address",
-	fmtInterfaceName:     "interface-name",
-	fmtVrfName:           "vrf-name",
-	fmtVlanRange:         "vlan-range",
-	fmtPortRange:         "port-range",
+	fmtIPv4Addr:           "inet:ipv4-address",
+	fmtIPv6Addr:           "inet:ipv6-address",
+	fmtIPAddr:             "inet:ip-address",
+	fmtIPv4Prefix:         "inet:ipv4-prefix",
+	fmtIPv6Prefix:         "inet:ipv6-prefix",
+	fmtMAC:                "mac-address",
+	fmtInterfaceName:      "interface-name",
+	fmtVrfName:            "vrf-name",
+	fmtVlanRange:          "vlan-range",
+	fmtPortRange:          "port-range",
 	fmtRouteDistinguisher: "route-distinguisher",
-	fmtRouteTarget:       "route-target",
-	fmtExtCommunity:      "ext-community",
-	fmtBgpCommunity:      "bgp-community",
-	fmtEvpnRoute:         "evpn-route",
-	fmtAsnRange:          "asn-range",
-	fmtEsIdentifier:      "es-identifier",
-	fmtSegmentIdentifier: "segment-identifier",
-	fmtBgpRegex:          "string",
-	fmtHostname:          "hostname",
-	fmtUserName:          "user-name",
-	fmtSnmpOid:           "snmp-oid",
-	fmtSecretString:      "string",
-	fmtInteger:           "int64",
-	fmtSequenceID:        "int64",
-	fmtFloat:             "decimal64",
-	fmtDateTime:          "yang:date-and-time",
+	fmtRouteTarget:        "route-target",
+	fmtExtCommunity:       "ext-community",
+	fmtBgpCommunity:       "bgp-community",
+	fmtEvpnRoute:          "evpn-route",
+	fmtAsnRange:           "asn-range",
+	fmtEsIdentifier:       "es-identifier",
+	fmtSegmentIdentifier:  "segment-identifier",
+	fmtBgpRegex:           "string",
+	fmtHostname:           "hostname",
+	fmtUserName:           "user-name",
+	fmtSnmpOid:            "snmp-oid",
+	fmtSecretString:       "string",
+	fmtInteger:            "int64",
+	fmtSequenceID:         "int64",
+	fmtFloat:              "decimal64",
+	fmtDateTime:           "yang:date-and-time",
 }
 
 func yangIntegerType(s *Config) string {
@@ -389,6 +377,35 @@ func yangIntegerType(s *Config) string {
 		return "uint64"
 	}
 	return "int64"
+}
+
+// Numeric enum values restrict the numeric base type; converting them to
+// YANG enum names would change their type and dropping them allows any number.
+func yangEnumRange(s *Config) string {
+	var values []float64
+	for _, value := range s.Enum {
+		if value == nil {
+			continue
+		}
+		number, err := strconv.ParseFloat(fmt.Sprint(value), 64)
+		if err != nil {
+			continue
+		}
+		if s.Minimum != nil && number < *s.Minimum {
+			continue
+		}
+		if s.Maximum != nil && number > *s.Maximum {
+			continue
+		}
+		values = append(values, number)
+	}
+	slices.Sort(values)
+	values = slices.Compact(values)
+	var ranges []string
+	for _, value := range values {
+		ranges = append(ranges, yangNumber(value))
+	}
+	return strings.Join(ranges, " | ")
 }
 
 func yangRangeBound(value float64, yangType string) string {

@@ -30,9 +30,9 @@ of the same underlying defects) and one unused-import warning:
   for nonnegative integers. Validate boundary values through pyang, including
   the full signed and unsigned 64-bit ranges. The reported reversed ranges were
   caused by named constants being misread as numbers, not reversed source bounds.
-- [ ] Preserve non-string enum values when generating YANG enumerations; numeric
-  enums currently produce empty enumeration types. Validate representative
-  source fixtures with `pyang`.
+- [x] Preserve numeric enum values as restrictions on numeric YANG types, including
+  nullable enums and union members. Emit each union member's bounds instead of
+  dropping its restrictions; validate allowed and rejected values with pyang.
 - [ ] Supply decimal64 fraction-digits and compatible range restrictions, with
   parser-backed tests for fractional bounds and defaults.
 - [ ] Handle source regexes that are incompatible with YANG's XML Schema regex
