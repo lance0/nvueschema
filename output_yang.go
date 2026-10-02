@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"nemith.io/nvueschema/yangregexp"
 )
 
 // WriteYANG outputs the config schema as a YANG module.
@@ -19,6 +21,7 @@ func WriteYANG(w io.Writer, schema *Config, info map[string]any) error {
 	}
 
 	fmt.Fprintln(w, "module cumulus-nvue {")
+	fmt.Fprintln(w, "  yang-version 1.1;")
 	fmt.Fprintln(w, `  namespace "urn:nvidia:cumulus:nvue";`)
 	fmt.Fprintln(w, "  prefix nvue;")
 	fmt.Fprintln(w)
@@ -40,7 +43,9 @@ func WriteYANG(w io.Writer, schema *Config, info map[string]any) error {
 	fmt.Fprintln(w)
 
 	// Emit typedefs for format-based types.
-	emitYANGTypedefs(w)
+	if err := emitYANGTypedefs(w); err != nil {
+		return err
+	}
 
 	merged := FlattenComposite(schema)
 	if err := emitYANGContainer(w, "nvue-config", schema, merged, 1); err != nil {
@@ -51,21 +56,19 @@ func WriteYANG(w io.Writer, schema *Config, info map[string]any) error {
 	return checked.err
 }
 
-func emitYANGTypedefs(w io.Writer) {
+func emitYANGTypedefs(w io.Writer) error {
 	for _, td := range typedefs {
 		yangName := yangTypedefName(td.key)
 		if yangName == "" {
 			continue
 		}
-		// Strip anchors for YANG patterns.
-		pattern := strings.TrimPrefix(td.pattern, "^")
-		pattern = strings.TrimSuffix(pattern, "$")
-
 		fmt.Fprintf(w, "  typedef %s {\n", yangName)
 		fmt.Fprintf(w, "    type string")
-		if pattern != "" {
+		if td.pattern != "" {
 			fmt.Fprintf(w, " {\n")
-			fmt.Fprintf(w, "      pattern %s;\n", yangString(pattern))
+			if err := emitYANGPatterns(w, td.pattern, "      "); err != nil {
+				return fmt.Errorf("typedef %s: %w", yangName, err)
+			}
 			fmt.Fprintln(w, "    }")
 		} else {
 			fmt.Fprintln(w, ";")
@@ -74,6 +77,24 @@ func emitYANGTypedefs(w io.Writer) {
 		fmt.Fprintln(w, "  }")
 		fmt.Fprintln(w)
 	}
+	return nil
+}
+
+func emitYANGPatterns(w io.Writer, source, indent string) error {
+	patterns, err := yangregexp.Convert(source)
+	if err != nil {
+		return fmt.Errorf("pattern %q: %w", source, err)
+	}
+	for _, pattern := range patterns {
+		fmt.Fprintf(w, "%spattern %s", indent, yangString(pattern.Expression))
+		if pattern.InvertMatch {
+			fmt.Fprintln(w, " {")
+			fmt.Fprintf(w, "%s  modifier invert-match;\n%s}\n", indent, indent)
+		} else {
+			fmt.Fprintln(w, ";")
+		}
+	}
+	return nil
 }
 
 // yangTypedefName maps a formatKey to its YANG typedef name.
@@ -312,7 +333,9 @@ func emitYANGTypeBlock(w io.Writer, yangType string, s *Config, indent string) e
 		fmt.Fprintf(w, "%s    fraction-digits %d;\n", indent, digits)
 	}
 	if s.Pattern != "" {
-		fmt.Fprintf(w, "%s    pattern %s;\n", indent, yangString(s.Pattern))
+		if err := emitYANGPatterns(w, s.Pattern, indent+"    "); err != nil {
+			return err
+		}
 	}
 	if s.MinLength != nil || s.MaxLength != nil {
 		lo := 0
@@ -505,11 +528,16 @@ func yangNumber(value float64) string {
 // yangString quotes a value using YANG's four supported escape sequences.
 // Go's %q can emit escapes such as \uXXXX that YANG does not recognize.
 func yangString(s string) string {
+	// Some YANG parsers treat Unicode line separators as line endings.
+	// Isolate them in concatenated literals to prevent whitespace folding.
 	return `"` + strings.NewReplacer(
 		`\`, `\\`,
 		`"`, `\"`,
 		"\n", `\n`,
 		"\t", `\t`,
+		"\u0085", "\" + \"\u0085\" + \"",
+		"\u2028", "\" + \"\u2028\" + \"",
+		"\u2029", "\" + \"\u2029\" + \"",
 	).Replace(s) + `"`
 }
 
