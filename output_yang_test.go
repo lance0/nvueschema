@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"nemith.io/nvueschema/yangregexp"
 )
 
 func TestYANGTypeStatements(t *testing.T) {
@@ -38,7 +40,16 @@ func TestYANGPatternStrings(t *testing.T) {
 		{"unicode", `[é中']+`, `"[é中']+"`},
 	}
 	schema := &Config{Properties: make(map[string]*Config)}
+	wantPatterns := make(map[string]string)
 	for _, tt := range tests {
+		if got := yangString(tt.pattern); got != tt.literal {
+			t.Errorf("%s: quoted literal = %s, want %s", tt.name, got, tt.literal)
+		}
+		patterns, err := yangregexp.Convert(tt.pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantPatterns[tt.name] = patterns[0].Expression
 		schema.Properties[tt.name] = &Config{Type: "string", Pattern: tt.pattern}
 	}
 	var buf bytes.Buffer
@@ -46,8 +57,8 @@ func TestYANGPatternStrings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tt := range tests {
-		if !strings.Contains(buf.String(), "pattern "+tt.literal+";") {
-			t.Errorf("%s: missing correctly quoted pattern %s", tt.name, tt.literal)
+		if literal := yangString(wantPatterns[tt.name]); !strings.Contains(buf.String(), "pattern "+literal+";") {
+			t.Errorf("%s: missing correctly quoted pattern %s", tt.name, literal)
 		}
 	}
 
@@ -70,8 +81,8 @@ func TestYANGPatternStrings(t *testing.T) {
 			patterns[leaf.Name] = leaf.Pattern.Value
 		}
 		for _, tt := range tests {
-			if got, ok := patterns[tt.name]; !ok || got != tt.pattern {
-				t.Errorf("%s: parsed pattern = %q, want %q", tt.name, got, tt.pattern)
+			if got, ok := patterns[tt.name]; !ok || got != wantPatterns[tt.name] {
+				t.Errorf("%s: parsed pattern = %q, want %q", tt.name, got, wantPatterns[tt.name])
 			}
 		}
 	})
@@ -323,4 +334,56 @@ func testPython(t *testing.T, module string) string {
 		t.Skipf("install %s for generator integration tests", module)
 	}
 	return python
+}
+
+func TestYANGPatternSemantics(t *testing.T) {
+	schema := &Config{Properties: map[string]*Config{
+		"profile": {Type: "string", Pattern: `^(?!none$).*$`},
+		"hex":     {Type: "string", Pattern: `^0x([0-9A-Fa-f]{1,4})$`, Default: "0xFFFF"},
+		"search":  {Type: "string", Pattern: `key[0-9]+`},
+		"prefix":  {Type: "string", Pattern: `^/`},
+		"guards":  {Type: "string", Pattern: `^(?=swp)(?!swp0$)[a-z0-9]+$`},
+	}}
+	var buf bytes.Buffer
+	if err := WriteYANG(&buf, schema, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "yang-version 1.1;") || !strings.Contains(buf.String(), "modifier invert-match;") {
+		t.Fatal("missing YANG 1.1 pattern modifier")
+	}
+	t.Run("validate", func(t *testing.T) {
+		checkYANGValues(t, buf.Bytes(), map[string]yangValues{
+			"profile": {Good: []string{"", "none1", "a'\"b"}, Bad: []string{"none", "a\nb", "a\rb", "none\n"}},
+			"hex":     {Good: []string{"0x0", "0xFFFF"}, Bad: []string{"x0x0", "0x00000", "0x0\n"}},
+			"search":  {Good: []string{"key1", "xkey99z", "\nkey1\n"}, Bad: []string{"key", "keyx"}},
+			"prefix":  {Good: []string{"/", "/a\nb"}, Bad: []string{"x/", "\n/"}},
+			"guards":  {Good: []string{"swp1", "swp01"}, Bad: []string{"swp0", "eth1", "swp1\n"}},
+		})
+	})
+}
+
+func TestYANGUnsupportedPattern(t *testing.T) {
+	schema := &Config{Properties: map[string]*Config{"interface": {Properties: map[string]*Config{"label": {Type: "string", Pattern: `^(a+)\1$`}}}}}
+	var buf bytes.Buffer
+	err := WriteYANG(&buf, schema, nil)
+	if err == nil || !strings.Contains(err.Error(), "interface") || !strings.Contains(err.Error(), "label") || !strings.Contains(err.Error(), "unsupported regex conversion") {
+		t.Fatalf("missing field-specific conversion error: %v", err)
+	}
+}
+
+func TestYANGUnicodePatternQuoting(t *testing.T) {
+	schema := &Config{Properties: map[string]*Config{
+		"space":     {Type: "string", Pattern: `^\s+$`},
+		"literal":   {Type: "string", Pattern: "^a \u0085 \u2028 \u2029 b$"},
+		"interface": {Type: "string", Format: "interface-name", Default: "eth0"},
+	}}
+	var buf bytes.Buffer
+	if err := WriteYANG(&buf, schema, nil); err != nil {
+		t.Fatal(err)
+	}
+	checkYANGValues(t, buf.Bytes(), map[string]yangValues{
+		"space":     {Good: []string{" ", "\t", "\u200a", "\u2028", "\u2029", "\ufeff"}, Bad: []string{"\u200b", "\u0085", "a"}},
+		"literal":   {Good: []string{"a \u0085 \u2028 \u2029 b"}, Bad: []string{"a\u0085\u2028\u2029b", "a   b"}},
+		"interface": {Good: []string{"eth0", "swp1", "swp1.2", "bond-1"}, Bad: []string{"what0", "eth!", "eth\n"}},
+	})
 }
