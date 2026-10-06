@@ -20,19 +20,19 @@ func TestJSONSchemaPreservesPatterns(t *testing.T) {
 }
 
 func TestJSONSchemaConstraints(t *testing.T) {
-	max := 3
+	maxLength := 3
 	for _, tc := range []struct {
 		name      string
 		schema    *Config
 		good, bad []any
 	}{
-		{"formatted bounds", &Config{Type: "string", Format: "key-string", MaxLength: &max, Pattern: `^a`, Default: "abc"}, []any{"abc"}, []any{"abcd", "bbb"}},
+		{"formatted bounds", &Config{Type: "string", Format: "key-string", MaxLength: &maxLength, Pattern: `^a`, Default: "abc"}, []any{"abc"}, []any{"abcd", "bbb"}},
 		{"formatted enum", &Config{Type: "string", Format: "key-string", Enum: []any{"yes"}}, []any{"yes"}, []any{"no"}},
 		{"formatted nullable", &Config{Type: "string", Format: "mac", Nullable: true}, []any{nil, "00:11:22:33:44:55"}, []any{"garbage", 42}},
 		{"union formats", &Config{AnyOf: []*Config{{Type: "string", Format: "mac"}, {Type: "integer"}}}, []any{"00:11:22:33:44:55", 42}, []any{"garbage"}},
 		{"outer nullable", &Config{Nullable: true, AnyOf: []*Config{{Type: "integer"}, {Type: "string", Enum: []any{"auto"}}}}, []any{nil, 42, "auto"}, []any{true, "bad"}},
 		{"nullable enum", &Config{Type: "string", Nullable: true, Enum: []any{"auto"}}, []any{nil, "auto"}, []any{"bad"}},
-		{"nested wrapper bounds", &Config{AnyOf: []*Config{{MaxLength: &max, AnyOf: []*Config{{Type: "string"}}}, {Type: "integer"}}}, []any{"abc", 42}, []any{"abcd"}},
+		{"nested wrapper bounds", &Config{AnyOf: []*Config{{MaxLength: &maxLength, AnyOf: []*Config{{Type: "string"}}}, {Type: "integer"}}}, []any{"abc", 42}, []any{"abcd"}},
 		{"exclusive union", &Config{OneOf: []*Config{{Type: "number"}, {Type: "integer"}}}, []any{1.5}, []any{1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

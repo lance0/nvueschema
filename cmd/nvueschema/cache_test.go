@@ -76,7 +76,7 @@ func TestCacheRevalidation(t *testing.T) {
 
 func TestCacheLegacyAndFailureFallback(t *testing.T) {
 	calls := 0
-	v := cacheTestClient(t, func(r *http.Request) (*http.Response, error) {
+	v := cacheTestClient(t, func(_ *http.Request) (*http.Response, error) {
 		calls++
 		if calls == 1 {
 			return cacheResponse(200, "fresh", ""), nil
@@ -124,7 +124,7 @@ func TestNoCacheBypassesStoredSchema(t *testing.T) {
 func TestCacheCannotFallbackWithoutData(t *testing.T) {
 	for _, status := range []int{304, 500} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
-			v := cacheTestClient(t, func(r *http.Request) (*http.Response, error) { return cacheResponse(status, "", ""), nil })
+			v := cacheTestClient(t, func(_ *http.Request) (*http.Response, error) { return cacheResponse(status, "", ""), nil })
 			if _, err := cachedFetch(v, false); err == nil {
 				t.Errorf("status %d accepted without cache", status)
 			}

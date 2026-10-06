@@ -196,23 +196,23 @@ func alternate(texts []string) string {
 	return "(" + strings.Join(texts, "|") + ")"
 }
 
-func repeat(text string, min, max int) string {
+func repeat(text string, minimum, maximum int) string {
 	suffix := ""
 	switch {
-	case min == 1 && max == 1:
+	case minimum == 1 && maximum == 1:
 		return text
-	case min == 0 && max == 1:
+	case minimum == 0 && maximum == 1:
 		suffix = "?"
-	case min == 0 && max == math.MaxInt32:
+	case minimum == 0 && maximum == math.MaxInt32:
 		suffix = "*"
-	case min == 1 && max == math.MaxInt32:
+	case minimum == 1 && maximum == math.MaxInt32:
 		suffix = "+"
-	case min == max:
-		suffix = fmt.Sprintf("{%d}", min)
-	case max == math.MaxInt32:
-		suffix = fmt.Sprintf("{%d,}", min)
+	case minimum == maximum:
+		suffix = fmt.Sprintf("{%d}", minimum)
+	case maximum == math.MaxInt32:
+		suffix = fmt.Sprintf("{%d,}", minimum)
 	default:
-		suffix = fmt.Sprintf("{%d,%d}", min, max)
+		suffix = fmt.Sprintf("{%d,%d}", minimum, maximum)
 	}
 	return "(" + text + ")" + suffix
 }
