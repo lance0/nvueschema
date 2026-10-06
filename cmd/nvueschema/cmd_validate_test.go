@@ -40,7 +40,7 @@ func TestValidateNVUEPattern(t *testing.T) {
 }
 
 // Exercise the command's exit status without changing its production behavior.
-func TestValidateCommandHelper(t *testing.T) {
+func TestValidateCommandHelper(_ *testing.T) {
 	if os.Getenv("NVUESCHEMA_VALIDATE_HELPER") != "1" {
 		return
 	}

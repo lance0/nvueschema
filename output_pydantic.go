@@ -141,11 +141,12 @@ func (g *pyGen) emitTypeModels(name string, s *Config) {
 		return
 	}
 	flat := FlattenComposite(s)
-	if flat.Type == "array" {
+	switch {
+	case flat.Type == "array":
 		g.emitTypeModels(name+"Item", flat.Items)
-	} else if hasProps(flat) {
+	case hasProps(flat):
 		g.emitModel(name, s)
-	} else if flat.AdditionalProperties != nil {
+	case flat.AdditionalProperties != nil:
 		g.emitTypeModels(name+"Entry", flat.AdditionalProperties)
 	}
 }

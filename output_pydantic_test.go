@@ -9,15 +9,15 @@ import (
 )
 
 func TestPydanticConstraints(t *testing.T) {
-	min, max := 552.0, 9216.0
+	minimum, maximum := 552.0, 9216.0
 	lo, hi := 2, 8
 	large := float64(1 << 64)
 	schema := &Config{Properties: map[string]*Config{
-		"bounded-choice": {Minimum: &min, Maximum: &max, AnyOf: []*Config{{Type: "integer"}, {Type: "string", Enum: []any{"auto"}}}},
+		"bounded-choice": {Minimum: &minimum, Maximum: &maximum, AnyOf: []*Config{{Type: "integer"}, {Type: "string", Enum: []any{"auto"}}}},
 		"counter":        {Type: "integer", Maximum: &large},
-		"mtu":            {Type: "integer", Minimum: &min, Maximum: &max},
+		"mtu":            {Type: "integer", Minimum: &minimum, Maximum: &maximum},
 		"name":           {Type: "string", MinLength: &lo, MaxLength: &hi, Pattern: `^(?!none$)[a-z]+$`},
-		"timer":          {AnyOf: []*Config{{Type: "integer", Minimum: &min, Maximum: &max}, {Type: "string", Enum: []any{"auto"}}}},
+		"timer":          {AnyOf: []*Config{{Type: "integer", Minimum: &minimum, Maximum: &maximum}, {Type: "string", Enum: []any{"auto"}}}},
 		"mac":            {Type: "string", Format: "mac", Pattern: `^00:`},
 	}}
 	var buf bytes.Buffer

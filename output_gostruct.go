@@ -112,11 +112,12 @@ func (g *goGen) emitTypeStructs(name string, s *Config) {
 		return
 	}
 	flat := FlattenComposite(s)
-	if flat.Type == "array" {
+	switch {
+	case flat.Type == "array":
 		g.emitTypeStructs(name+"Item", flat.Items)
-	} else if hasProps(flat) {
+	case hasProps(flat):
 		g.emitStruct(name, s)
-	} else if flat.AdditionalProperties != nil {
+	case flat.AdditionalProperties != nil:
 		g.emitTypeStructs(name+"Entry", flat.AdditionalProperties)
 	}
 }
